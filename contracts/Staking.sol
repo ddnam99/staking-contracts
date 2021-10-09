@@ -25,7 +25,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     event NewStakeEvent(uint256 stakeEventId);
     event CloseStakeEvent(uint256 stakeEventId);
     event Staked(address user, uint256 stakeEventId, uint256 amount);
-    event Withdrawn(address user, uint stakeEventid, uint256 amount, uint256 reward);
+    event Withdrawn(address user, uint256 stakeEventid, uint256 amount, uint256 reward);
 
     constructor(address _multiSigAccount) {
         _setupRole(DEFAULT_ADMIN_ROLE, _multiSigAccount);
@@ -35,19 +35,33 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     function createEvent(
         uint256 _startTime,
         uint256 _endTime,
-        address _token,
+        IERC20 _token,
+        uint256 _maxTokenStake,
         uint256 _cliff,
-        address _rewardToken,
+        IERC20 _rewardToken,
         uint256 _rewardPercent
     ) external nonReentrant onlyAdmin {
+        require(_startTime > block.timestamp, "Start time must be in future date");
+        require(_endTime > _startTime, "End time must be greater than start time");
+        require(_cliff != 0, "Cliff time must be not equal 0");
+        require(_maxTokenStake > 0, "Max token stake must be grater than 0");
+        require(_rewardPercent > 0 && _rewardPercent <= 100, "Reward percent must be in range [1, 100]");
+
+        uint256 totalReward = (_maxTokenStake * _rewardPercent) / 100;
+
+        require(_rewardToken.transferFrom(_msgSender(), address(this), totalReward), "Transfer reward token faild");
+
         StakingLib.StakeEvent memory stakeEvent = StakingLib.StakeEvent(
             _startTime,
             _endTime,
             true,
-            IERC20(_token),
+            _token,
+            _maxTokenStake,
+            0,
             _cliff,
-            IERC20(_rewardToken),
-            _rewardPercent
+            _rewardToken,
+            _rewardPercent,
+            totalReward
         );
 
         _stakeEvents.push(stakeEvent);
@@ -72,12 +86,14 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     function stake(uint256 _stakeEventId, uint256 _amount) external nonReentrant {
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
-        require(_amount != 0, "Amount must greater 0");
+        require(_amount > 0, "Amount must greater 0");
         require(stakeEvent.isActive && stakeEvent.endTime >= block.timestamp, "Stake event closed");
-        require(stakeEvent.token.transferFrom(_msgSender(), address(this), _amount), "transfer failed");
+        require(stakeEvent.tokenStaked + _amount <= stakeEvent.maxTokenStake, "Over max token stake");
+        require(stakeEvent.token.transferFrom(_msgSender(), address(this), _amount), "Transfer failed");
 
         StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_stakeEventId, block.timestamp, _amount, false);
 
+        _stakeEvents[_stakeEventId].tokenStaked += _amount;
         _stakeInfoList[_stakeEventId][_msgSender()] = stakeInfo;
 
         emit Staked(_msgSender(), _stakeEventId, _amount);
@@ -103,13 +119,21 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
         require(stakeInfo.amount > 0 || stakeInfo.isClaimed, "Nothing to withdraw");
+        require(!stakeEvent.isActive || stakeEvent.endTime < block.timestamp, "It's not time to withdraw yet");
 
         uint256 rewardClaimable = _getRewardClaimable(_stakeEventId);
-        require(stakeEvent.rewardToken.transfer(_msgSender(), rewardClaimable), "transfer failed");
-        require(stakeEvent.token.transfer(_msgSender(), stakeInfo.amount), "transfer failed");
+
+        require(stakeEvent.rewardToken.balanceOf(address(this)) >= rewardClaimable, "Not enough reward");
+        require(stakeEvent.rewardToken.transfer(_msgSender(), rewardClaimable), "Transfer failed");
+        require(stakeEvent.token.transfer(_msgSender(), stakeInfo.amount), "Transfer failed");
 
         _stakeInfoList[_stakeEventId][_msgSender()].isClaimed = true;
 
         emit Withdrawn(_msgSender(), _stakeEventId, stakeInfo.amount, rewardClaimable);
+    }
+
+    function withdrawReward(IERC20 _token, uint256 _amount) external nonReentrant onlyAdmin {
+        require(_amount != 0, "Amount must be not equal 0");
+        require(_token.transfer(_msgSender(), _amount), "Transfer failed");
     }
 }
