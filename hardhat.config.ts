@@ -63,7 +63,7 @@ function getChainConfig(network: keyof typeof chainIds): NetworkUserConfig {
 }
 
 const config: HardhatUserConfig = {
-  defaultNetwork: "rinkeby",
+  defaultNetwork: "bsc_testnet",
   gasReporter: {
     currency: "USDT",
     enabled: process.env.REPORT_GAS ? true : false,
@@ -115,7 +115,7 @@ const config: HardhatUserConfig = {
   etherscan: {
     // Your API key for Etherscan
     // Obtain one at https://etherscan.io/
-    apiKey: etherscanApiKey,
+    apiKey: bscscanApiKey,
   },
 };
 

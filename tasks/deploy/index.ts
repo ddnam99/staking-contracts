@@ -1,1 +1,2 @@
 import "./Staking";
+import "./StakingMock";

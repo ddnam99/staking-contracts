@@ -9,7 +9,8 @@ library StakingLib {
         uint256 endTime;
         bool isActive;
         IERC20 token;
-        uint256 maxTokenStake;
+        uint256 minTokenStake;
+        uint256 maxTokenStake; 
         uint256 tokenStaked;
         uint256 cliff; // days
         IERC20 rewardToken;

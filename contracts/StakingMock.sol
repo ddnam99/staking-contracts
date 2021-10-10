@@ -13,6 +13,8 @@ import "./StakingLib.sol";
 contract Staking is Context, ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
 
+    uint256 public blockTimestamp;
+
     StakingLib.StakeEvent[] private _stakeEvents;
     // eventId => account => stake info
     mapping(uint256 => mapping(address => StakingLib.StakeInfo)) _stakeInfoList;
@@ -27,9 +29,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     event Staked(address user, uint256 stakeEventId, uint256 amount);
     event Withdrawn(address user, uint256 stakeEventId, uint256 amount, uint256 reward);
 
-    constructor(address _multiSigAccount) {
-        _setupRole(DEFAULT_ADMIN_ROLE, _multiSigAccount);
-        renounceRole(DEFAULT_ADMIN_ROLE, _msgSender());
+    constructor() {
+        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        blockTimestamp = block.timestamp;
     }
 
     function createEvent(
@@ -42,7 +44,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         IERC20 _rewardToken,
         uint256 _rewardPercent
     ) external nonReentrant onlyAdmin {
-        require(_startTime > block.timestamp, "Start time must be in future date");
+        require(_startTime > blockTimestamp, "Start time must be in future date");
         require(_endTime > _startTime, "End time must be greater than start time");
         require(_cliff != 0, "Cliff time must be not equal 0");
         require(_maxTokenStake > 0, "Max token stake must be grater than 0");
@@ -89,13 +91,13 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
         require(_amount > 0, "Amount must greater 0");
-        require(stakeEvent.startTime <= block.timestamp, "It's not time to stake yet");
-        require(stakeEvent.isActive && stakeEvent.endTime >= block.timestamp, "Stake event closed");
+        require(stakeEvent.startTime <= blockTimestamp, "It's not time to stake yet");
+        require(stakeEvent.isActive && stakeEvent.endTime >= blockTimestamp, "Stake event closed");
         require(stakeEvent.minTokenStake <= _amount, "Amount must be greater or equal minTokenStake");
         require(stakeEvent.tokenStaked + _amount <= stakeEvent.maxTokenStake, "Over max token stake");
         require(stakeEvent.token.transferFrom(_msgSender(), address(this), _amount), "Transfer failed");
 
-        StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_stakeEventId, block.timestamp, _amount, false);
+        StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_stakeEventId, blockTimestamp, _amount, false);
 
         _stakeEvents[_stakeEventId].tokenStaked += _amount;
         _stakeInfoList[_stakeEventId][_msgSender()] = stakeInfo;
@@ -109,7 +111,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         if (stakeInfo.amount == 0 || stakeInfo.isClaimed) return 0;
 
-        uint256 stakeDays = (block.timestamp - stakeInfo.stakeTime) / 1 days;
+        uint256 stakeDays = (blockTimestamp - stakeInfo.stakeTime) / 1 days;
 
         rewardClaimable = (stakeInfo.amount * stakeDays * stakeEvent.rewardPercent) / (stakeEvent.cliff * 100);
     }
@@ -123,7 +125,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
         require(stakeInfo.amount > 0 || stakeInfo.isClaimed, "Nothing to withdraw");
-        require(!stakeEvent.isActive || stakeEvent.endTime < block.timestamp, "It's not time to withdraw yet");
+        require(!stakeEvent.isActive || stakeEvent.endTime < blockTimestamp, "It's not time to withdraw yet");
 
         uint256 rewardClaimable = _getRewardClaimable(_stakeEventId);
 
@@ -139,5 +141,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     function withdrawReward(IERC20 _token, uint256 _amount) external nonReentrant onlyAdmin {
         require(_amount != 0, "Amount must be not equal 0");
         require(_token.transfer(_msgSender(), _amount), "Transfer failed");
+    }
+
+    function setBlockTimestamp(uint256 _timestamp) external onlyAdmin {
+        blockTimestamp = _timestamp;
     }
 }
