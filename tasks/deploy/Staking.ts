@@ -5,6 +5,7 @@ import { resolve } from "path";
 import { config as dotenvConfig } from "dotenv";
 
 dotenvConfig({ path: resolve(__dirname, "../../.env") });
+
 const multiSigAccount: string | undefined = process.env.MULTI_SIG_ACCOUNT;
 if (!multiSigAccount) {
   throw new Error("Please set your MULTI_SIG_ACCOUNT in a .env file");
@@ -14,7 +15,8 @@ task("deploy:staking")
   .addFlag("verify", "Verify contracts at Etherscan")
   .setAction(async ({}, hre: HardhatRuntimeEnvironment) => {
     const Staking = await hre.ethers.getContractFactory("Staking");
-    
+
+    // @ts-ignore
     const token = await Staking.deploy(multiSigAccount);
     await token.deployed();
     console.log("token deployed to: ", token.address);

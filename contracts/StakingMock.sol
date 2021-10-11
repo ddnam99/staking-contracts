@@ -10,14 +10,14 @@ import "hardhat/console.sol";
 
 import "./StakingLib.sol";
 
-contract Staking is Context, ReentrancyGuard, AccessControl {
+contract StakingMock is Context, ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
 
     uint256 public blockTimestamp;
 
     StakingLib.StakeEvent[] private _stakeEvents;
     // eventId => account => stake info
-    mapping(uint256 => mapping(address => StakingLib.StakeInfo)) _stakeInfoList;
+    mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
 
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "ADMIN role required");
@@ -44,15 +44,15 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         IERC20 _rewardToken,
         uint256 _rewardPercent
     ) external nonReentrant onlyAdmin {
-        require(_startTime > blockTimestamp, "Start time must be in future date");
+        require(_startTime >= blockTimestamp, "Start time must be in future date");
         require(_endTime > _startTime, "End time must be greater than start time");
         require(_cliff != 0, "Cliff time must be not equal 0");
-        require(_maxTokenStake > 0, "Max token stake must be grater than 0");
+        require(_maxTokenStake > 0, "Max token stake must be greater than 0");
         require(_rewardPercent > 0 && _rewardPercent <= 100, "Reward percent must be in range [1, 100]");
 
         uint256 totalReward = (_maxTokenStake * _rewardPercent) / 100;
 
-        require(_rewardToken.transferFrom(_msgSender(), address(this), totalReward), "Transfer reward token faild");
+        require(_rewardToken.transferFrom(_msgSender(), address(this), totalReward), "Transfer reward token failed");
 
         StakingLib.StakeEvent memory stakeEvent = StakingLib.StakeEvent(
             _startTime,
@@ -79,21 +79,41 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         emit CloseStakeEvent(_stakeEventId);
     }
 
-    function getStakeEventInfo(uint256 _stakeEventId) external view returns (StakingLib.StakeEvent memory) {
+    function getStakeEvent(uint256 _stakeEventId) external view returns (StakingLib.StakeEvent memory) {
         return _stakeEvents[_stakeEventId];
     }
 
-    function getStakeEventList() external view returns (StakingLib.StakeEvent[] memory) {
+    function getAllStakeEvents() external view returns (StakingLib.StakeEvent[] memory) {
         return _stakeEvents;
+    }
+
+    function getActiveStakeEvents() external view returns (StakingLib.StakeEvent[] memory) {
+        uint256[] memory activeStakeEventIds = new uint256[](_stakeEvents.length);
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < _stakeEvents.length; i++) {
+            if (_stakeEvents[i].isActive && _stakeEvents[i].endTime > blockTimestamp) {
+                activeStakeEventIds[count] = i;
+                count++;
+            }
+        }
+
+        StakingLib.StakeEvent[] memory activeStakeInfoList = new StakingLib.StakeEvent[](count);
+
+        for (uint256 i = 0; i < count; i++) {
+            activeStakeInfoList[i] = _stakeEvents[activeStakeEventIds[i]];
+        }
+
+        return activeStakeInfoList;
     }
 
     function stake(uint256 _stakeEventId, uint256 _amount) external nonReentrant {
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
-        require(_amount > 0, "Amount must greater 0");
+        require(_amount > 0, "Amount must be greater than 0");
         require(stakeEvent.startTime <= blockTimestamp, "It's not time to stake yet");
         require(stakeEvent.isActive && stakeEvent.endTime >= blockTimestamp, "Stake event closed");
-        require(stakeEvent.minTokenStake <= _amount, "Amount must be greater or equal minTokenStake");
+        require(stakeEvent.minTokenStake <= _amount, "Amount must be greater or equal min token stake");
         require(stakeEvent.tokenStaked + _amount <= stakeEvent.maxTokenStake, "Over max token stake");
         require(stakeEvent.token.transferFrom(_msgSender(), address(this), _amount), "Transfer failed");
 
@@ -105,8 +125,12 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         emit Staked(_msgSender(), _stakeEventId, _amount);
     }
 
-    function _getRewardClaimable(uint256 _stakeEventId) internal view returns (uint256 rewardClaimable) {
-        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_stakeEventId][_msgSender()];
+    function getStakeInfo(uint256 _stakeEventId, address _user) external view returns (StakingLib.StakeInfo memory) {
+        return _stakeInfoList[_stakeEventId][_user];
+    }
+
+    function _getRewardClaimable(uint256 _stakeEventId, address _user) internal view returns (uint256 rewardClaimable) {
+        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_stakeEventId][_user];
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
         if (stakeInfo.amount == 0 || stakeInfo.isClaimed) return 0;
@@ -116,20 +140,27 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         rewardClaimable = (stakeInfo.amount * stakeDays * stakeEvent.rewardPercent) / (stakeEvent.cliff * 100);
     }
 
-    function getRewardClaimable(uint256 _stakeEventId) external view returns (uint256) {
-        return _getRewardClaimable(_stakeEventId);
+    function getRewardClaimable(uint256 _stakeEventId, address _user) external view returns (uint256) {
+        return _getRewardClaimable(_stakeEventId, _user);
     }
 
     function withdraw(uint256 _stakeEventId) external nonReentrant {
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_stakeEventId][_msgSender()];
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
-        require(stakeInfo.amount > 0 || stakeInfo.isClaimed, "Nothing to withdraw");
         require(!stakeEvent.isActive || stakeEvent.endTime < blockTimestamp, "It's not time to withdraw yet");
+        require(stakeInfo.amount > 0 && !stakeInfo.isClaimed, "Nothing to withdraw");
 
-        uint256 rewardClaimable = _getRewardClaimable(_stakeEventId);
+        uint256 rewardClaimable = _getRewardClaimable(_stakeEventId, _msgSender());
 
-        require(stakeEvent.rewardToken.balanceOf(address(this)) >= rewardClaimable, "Not enough reward");
+        require(
+            stakeEvent.token.balanceOf(address(this)) >= stakeInfo.amount,
+            "Staking contract not enough token, contact to dev team"
+        );
+        require(
+            stakeEvent.rewardToken.balanceOf(address(this)) >= rewardClaimable,
+            "Staking contract not enough reward, contact to dev team"
+        );
         require(stakeEvent.rewardToken.transfer(_msgSender(), rewardClaimable), "Transfer failed");
         require(stakeEvent.token.transfer(_msgSender(), stakeInfo.amount), "Transfer failed");
 
