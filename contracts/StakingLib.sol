@@ -4,20 +4,26 @@ pragma solidity >=0.8.2;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 library StakingLib {
+    /**
+        @dev represents one stake event
+     */
     struct StakeEvent {
         uint256 startTime;
         uint256 endTime;
-        bool isActive;
-        IERC20 token;
-        uint256 minTokenStake;
-        uint256 maxTokenStake; 
+        bool isActive; // isActive = false when admin close before end time
+        IERC20 token; // token stake
+        uint256 minTokenStake; // minimum token user can stake
+        uint256 maxTokenStake; // maximum total token all user can stake
         uint256 tokenStaked;
         uint256 cliff; // days
         IERC20 rewardToken;
         uint256 rewardPercent;
-        uint256 totalReward;
+        uint256 totalReward; // maximum reward token
     }
 
+    /**
+        @dev represents one user stake in one stake event
+     */
     struct StakeInfo {
         uint256 stakingEventId;
         uint256 stakeTime;

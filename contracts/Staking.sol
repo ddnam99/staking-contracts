@@ -14,6 +14,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
 
     StakingLib.StakeEvent[] private _stakeEvents;
+    
     // eventId => account => stake info
     mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
     mapping(IERC20 => uint256) private _stakedAmounts;
@@ -73,6 +74,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         emit NewStakeEvent(_stakeEvents.length - 1);
     }
 
+    //** 
+        @dev admin close stake event before end time
+     */
     function closeStakeEvent(uint256 _stakeEventId) external nonReentrant onlyAdmin {
         _stakeEvents[_stakeEventId].isActive = false;
 
@@ -155,6 +159,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return _getRewardClaimable(_stakeEventId, _user);
     }
 
+    //** 
+        @dev user withdraw token & reward
+     */
     function withdraw(uint256 _stakeEventId) external nonReentrant {
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_stakeEventId][_msgSender()];
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
@@ -192,6 +199,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return _rewardAmounts[_token];
     }
 
+    //** 
+        @dev admin withdraws excess token
+     */
     function withdrawERC20(IERC20 _token, uint256 _amount) external nonReentrant onlyAdmin {
         require(_amount != 0, "Amount must be not equal 0");
 
