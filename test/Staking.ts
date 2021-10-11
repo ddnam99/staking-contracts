@@ -128,8 +128,9 @@ describe("Staking", function () {
       try {
         await user.stake(1, BigNumber.from(200).mul(decimalMultiplier));
         expect(true).equal(false);
-      } catch (err: any) {
-        expect(err.message.includes("Stake event closed")).equal(true);
+      } catch (err) {
+        // @ts-ignore
+        expect(err?.message?.includes("Stake event closed")).equal(true);
       }
     });
 
@@ -141,7 +142,8 @@ describe("Staking", function () {
       try {
         await user.stake(1, BigNumber.from(200).mul(decimalMultiplier));
         expect(true).equal(false);
-      } catch (err: any) {
+      } catch (err) {
+        // @ts-ignore
         expect(err.message.includes("Stake event closed")).equal(true);
       }
     });

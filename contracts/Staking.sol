@@ -16,6 +16,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     StakingLib.StakeEvent[] private _stakeEvents;
     // eventId => account => stake info
     mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
+    mapping(IERC20 => uint256) private _stakedAmounts;
+    mapping(IERC20 => uint256) private _rewardAmounts;
 
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "ADMIN role required");
@@ -115,10 +117,21 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         require(stakeEvent.tokenStaked + _amount <= stakeEvent.maxTokenStake, "Over max token stake");
         require(stakeEvent.token.transferFrom(_msgSender(), address(this), _amount), "Transfer failed");
 
+        uint256 reward = (_amount * stakeEvent.rewardPercent) / 100;
+
+        require(
+            stakeEvent.rewardToken.balanceOf(address(this)) >=
+                _stakedAmounts[stakeEvent.rewardToken] + _rewardAmounts[stakeEvent.rewardToken] + reward,
+            "Contract not enough reward"
+        );
+
         StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_stakeEventId, block.timestamp, _amount, false);
 
         _stakeEvents[_stakeEventId].tokenStaked += _amount;
         _stakeInfoList[_stakeEventId][_msgSender()] = stakeInfo;
+
+        _stakedAmounts[stakeEvent.token] += _amount;
+        _rewardAmounts[stakeEvent.rewardToken] += reward;
 
         emit Staked(_msgSender(), _stakeEventId, _amount);
     }
@@ -162,13 +175,31 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         require(stakeEvent.rewardToken.transfer(_msgSender(), rewardClaimable), "Transfer failed");
         require(stakeEvent.token.transfer(_msgSender(), stakeInfo.amount), "Transfer failed");
 
+        uint256 rewardFullCliff = (stakeInfo.amount * stakeEvent.rewardPercent) / 100;
+
         _stakeInfoList[_stakeEventId][_msgSender()].isClaimed = true;
+        _stakedAmounts[stakeEvent.token] -= stakeInfo.amount;
+        _rewardAmounts[stakeEvent.rewardToken] -= rewardFullCliff - rewardClaimable;
 
         emit Withdrawn(_msgSender(), _stakeEventId, stakeInfo.amount, rewardClaimable);
     }
 
-    function withdrawReward(IERC20 _token, uint256 _amount) external nonReentrant onlyAdmin {
+    function getStakedAmount(IERC20 _token) external view returns (uint256) {
+        return _stakedAmounts[_token];
+    }
+
+    function getRewardAmount(IERC20 _token) external view returns (uint256) {
+        return _rewardAmounts[_token];
+    }
+
+    function withdrawERC20(IERC20 _token, uint256 _amount) external nonReentrant onlyAdmin {
         require(_amount != 0, "Amount must be not equal 0");
+
+        require(
+            _token.balanceOf(address(this)) >= _stakedAmounts[_token] + _rewardAmounts[_token] + _amount,
+            "Not enough token"
+        );
+
         require(_token.transfer(_msgSender(), _amount), "Transfer failed");
     }
 }
