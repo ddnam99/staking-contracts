@@ -28,6 +28,6 @@ library StakingLib {
         uint256 stakingEventId;
         uint256 stakeTime;
         uint256 amount;
-        bool isClaimed;
+        uint256 withdrawTime;
     }
 }

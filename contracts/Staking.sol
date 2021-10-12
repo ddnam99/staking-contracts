@@ -137,7 +137,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
             "Contract not enough reward"
         );
 
-        StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_stakeEventId, block.timestamp, _amount, false);
+        StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_stakeEventId, block.timestamp, _amount, 0);
 
         _stakeEvents[_stakeEventId].tokenStaked += _amount;
         _stakeInfoList[_stakeEventId][_msgSender()] = stakeInfo;
@@ -156,7 +156,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_stakeEventId][_user];
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
-        if (stakeInfo.amount == 0 || stakeInfo.isClaimed) return 0;
+        if (stakeInfo.amount == 0 || stakeInfo.withdrawTime != 0) return 0;
 
         uint256 stakeDays = (block.timestamp - stakeInfo.stakeTime) / 1 days;
 
@@ -175,7 +175,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
 
         require(!stakeEvent.isActive || stakeEvent.endTime < block.timestamp, "It's not time to withdraw yet");
-        require(stakeInfo.amount > 0 && !stakeInfo.isClaimed, "Nothing to withdraw");
+        require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, "Nothing to withdraw");
 
         uint256 rewardClaimable = _getRewardClaimable(_stakeEventId, _msgSender());
 
@@ -192,7 +192,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         uint256 rewardFullCliff = (stakeInfo.amount * stakeEvent.rewardPercent) / 100;
 
-        _stakeInfoList[_stakeEventId][_msgSender()].isClaimed = true;
+        _stakeInfoList[_stakeEventId][_msgSender()].withdrawTime = block.timestamp;
         _stakedAmounts[stakeEvent.token] -= stakeInfo.amount;
         _rewardAmounts[stakeEvent.rewardToken] -= rewardFullCliff - rewardClaimable;
 
