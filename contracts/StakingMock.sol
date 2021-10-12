@@ -16,7 +16,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     uint256 public blockTimestamp;
 
     StakingLib.StakeEvent[] private _stakeEvents;
-    
+
     // eventId => account => stake info
     mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
     mapping(IERC20 => uint256) private _stakedAmounts;
@@ -76,7 +76,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         emit NewStakeEvent(_stakeEvents.length - 1);
     }
 
-    //** 
+    /**
         @dev admin close stake event before end time
      */
     function closeStakeEvent(uint256 _stakeEventId) external nonReentrant onlyAdmin {
@@ -93,24 +93,32 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         return _stakeEvents;
     }
 
-    function getActiveStakeEvents() external view returns (StakingLib.StakeEvent[] memory) {
-        uint256[] memory activeStakeEventIds = new uint256[](_stakeEvents.length);
-        uint256 count = 0;
-
+    function _getCountActiveStakeEvent(uint256 _timestamp) internal view returns (uint256 count) {
         for (uint256 i = 0; i < _stakeEvents.length; i++) {
-            if (_stakeEvents[i].isActive && _stakeEvents[i].endTime > blockTimestamp) {
-                activeStakeEventIds[count] = i;
+            if (_stakeEvents[i].isActive && _stakeEvents[i].endTime > _timestamp) {
                 count++;
             }
         }
+    }
 
-        StakingLib.StakeEvent[] memory activeStakeInfoList = new StakingLib.StakeEvent[](count);
+    function getCountActiveStakeEvent() external view returns (uint256) {
+        return _getCountActiveStakeEvent(blockTimestamp);
+    }
 
-        for (uint256 i = 0; i < count; i++) {
-            activeStakeInfoList[i] = _stakeEvents[activeStakeEventIds[i]];
+    function getActiveStakeEvents() external view returns (StakingLib.StakeEvent[] memory) {
+        uint256 currentTimestamp = blockTimestamp;
+        uint256 countActiveStakeEvent = _getCountActiveStakeEvent(currentTimestamp);
+        uint256 count = 0;
+
+        StakingLib.StakeEvent[] memory activeStakeEventList = new StakingLib.StakeEvent[](countActiveStakeEvent);
+
+        for (uint256 i = 0; i < _stakeEvents.length; i++) {
+            if (_stakeEvents[i].isActive && _stakeEvents[i].endTime > currentTimestamp) {
+                activeStakeEventList[count++] = _stakeEvents[i];
+            }
         }
 
-        return activeStakeInfoList;
+        return activeStakeEventList;
     }
 
     function stake(uint256 _stakeEventId, uint256 _amount) external nonReentrant {
@@ -161,7 +169,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         return _getRewardClaimable(_stakeEventId, _user);
     }
 
-    //** 
+    /** 
         @dev user withdraw token & reward
      */
     function withdraw(uint256 _stakeEventId) external nonReentrant {
@@ -201,7 +209,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         return _rewardAmounts[_token];
     }
 
-    //** 
+    /** 
         @dev admin withdraws excess token
      */
     function withdrawERC20(IERC20 _token, uint256 _amount) external nonReentrant onlyAdmin {
@@ -216,6 +224,6 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     }
 
     function setBlockTimestamp(uint256 _timestamp) external onlyAdmin {
-        blockTimestamp = block.timestamp;
+        blockTimestamp = _timestamp;
     }
 }
