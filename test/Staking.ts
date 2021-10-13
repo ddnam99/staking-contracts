@@ -159,6 +159,16 @@ describe("Staking", function () {
 
       expect(stakeInfo.amount.toHexString()).equal(BigNumber.from(200).mul(decimalMultiplier).toHexString());
     });
+
+    it("Should generate ticket code after stake", async () => {
+      const userAddress = await accounts[1].getAddress();
+
+      const ticketCode = await ownerStaking.getTicketCode(0, userAddress);
+
+      const ownerTicketCode = await ownerStaking.ownerOfTicketCode(ticketCode);
+
+      expect(ownerTicketCode).equal(userAddress);
+    });
   });
 
   describe("Reward", function () {

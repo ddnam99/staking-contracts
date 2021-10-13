@@ -17,6 +17,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
     // poolId => account => stake info
     mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
+    mapping(bytes32 => address) private _whiteList;
     mapping(IERC20 => uint256) private _stakedAmounts;
     mapping(IERC20 => uint256) private _rewardAmounts;
 
@@ -120,6 +121,14 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return activePools;
     }
 
+    function _generateTicketCode(uint256 _poolId, address _user) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_poolId, _user));
+    }
+
+    function ownerOfTicketCode(bytes32 _ticketCode) external view returns (address beneficiary) {
+        return _whiteList[_ticketCode];
+    }
+
     function stake(uint256 _poolId, uint256 _amount) external nonReentrant {
         StakingLib.Pool memory pool = _pools[_poolId];
 
@@ -139,6 +148,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         );
 
         StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, _amount, 0);
+        bytes32 ticketCode = _generateTicketCode(_poolId, _msgSender());
 
         _pools[_poolId].tokenStaked += _amount;
         _stakeInfoList[_poolId][_msgSender()] = stakeInfo;
@@ -146,11 +156,21 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         _stakedAmounts[pool.token] += _amount;
         _rewardAmounts[pool.rewardToken] += reward;
 
+        _whiteList[ticketCode] = _msgSender();
+
         emit Staked(_msgSender(), _poolId, _amount);
     }
 
     function getStakeInfo(uint256 _poolId, address _user) external view returns (StakingLib.StakeInfo memory) {
         return _stakeInfoList[_poolId][_user];
+    }
+
+    function getTicketCode(uint256 _poolId, address _user) external view returns (bytes32) {
+        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
+
+        require(stakeInfo.amount != 0, "No ticket code");
+
+        return _generateTicketCode(_poolId, _user);
     }
 
     function _getRewardClaimable(uint256 _poolId, address _user) internal view returns (uint256 rewardClaimable) {
