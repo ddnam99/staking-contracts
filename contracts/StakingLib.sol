@@ -5,9 +5,9 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 library StakingLib {
     /**
-        @dev represents one stake event
+        @dev represents one pool
      */
-    struct StakeEvent {
+    struct Pool {
         uint256 startTime;
         uint256 endTime;
         bool isActive; // isActive = false when admin close before end time
@@ -22,10 +22,10 @@ library StakingLib {
     }
 
     /**
-        @dev represents one user stake in one stake event
+        @dev represents one user stake in one pool
      */
     struct StakeInfo {
-        uint256 stakingEventId;
+        uint256 poolId;
         uint256 stakeTime;
         uint256 amount;
         uint256 withdrawTime;

@@ -13,9 +13,9 @@ import "./StakingLib.sol";
 contract Staking is Context, ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
 
-    StakingLib.StakeEvent[] private _stakeEvents;
+    StakingLib.Pool[] private _pools;
 
-    // eventId => account => stake info
+    // poolId => account => stake info
     mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
     mapping(IERC20 => uint256) private _stakedAmounts;
     mapping(IERC20 => uint256) private _rewardAmounts;
@@ -25,17 +25,17 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         _;
     }
 
-    event NewStakeEvent(uint256 stakeEventId);
-    event CloseStakeEvent(uint256 stakeEventId);
-    event Staked(address user, uint256 stakeEventId, uint256 amount);
-    event Withdrawn(address user, uint256 stakeEventId, uint256 amount, uint256 reward);
+    event NewPool(uint256 poolId);
+    event ClosePool(uint256 poolId);
+    event Staked(address user, uint256 poolId, uint256 amount);
+    event Withdrawn(address user, uint256 poolId, uint256 amount, uint256 reward);
 
     constructor(address _multiSigAccount) {
         _setupRole(DEFAULT_ADMIN_ROLE, _multiSigAccount);
         renounceRole(DEFAULT_ADMIN_ROLE, _msgSender());
     }
 
-    function createEvent(
+    function createPool(
         uint256 _startTime,
         uint256 _endTime,
         IERC20 _token,
@@ -55,7 +55,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         require(_rewardToken.transferFrom(_msgSender(), address(this), totalReward), "Transfer reward token failed");
 
-        StakingLib.StakeEvent memory stakeEvent = StakingLib.StakeEvent(
+        StakingLib.Pool memory pool = StakingLib.Pool(
             _startTime,
             _endTime,
             true,
@@ -69,134 +69,134 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
             totalReward
         );
 
-        _stakeEvents.push(stakeEvent);
+        _pools.push(pool);
 
-        emit NewStakeEvent(_stakeEvents.length - 1);
+        emit NewPool(_pools.length - 1);
     }
 
     /**
-        @dev admin close stake event before end time
+        @dev admin close pool before end time
      */
-    function closeStakeEvent(uint256 _stakeEventId) external nonReentrant onlyAdmin {
-        _stakeEvents[_stakeEventId].isActive = false;
+    function closePool(uint256 _poolId) external nonReentrant onlyAdmin {
+        _pools[_poolId].isActive = false;
 
-        emit CloseStakeEvent(_stakeEventId);
+        emit ClosePool(_poolId);
     }
 
-    function getStakeEvent(uint256 _stakeEventId) external view returns (StakingLib.StakeEvent memory) {
-        return _stakeEvents[_stakeEventId];
+    function getPool(uint256 _poolId) external view returns (StakingLib.Pool memory) {
+        return _pools[_poolId];
     }
 
-    function getAllStakeEvents() external view returns (StakingLib.StakeEvent[] memory) {
-        return _stakeEvents;
+    function getAllPools() external view returns (StakingLib.Pool[] memory) {
+        return _pools;
     }
 
-    function _getCountActiveStakeEvent(uint256 _timestamp) internal view returns (uint256 count) {
-        for (uint256 i = 0; i < _stakeEvents.length; i++) {
-            if (_stakeEvents[i].isActive && _stakeEvents[i].endTime > _timestamp) {
+    function _getCountActivePools(uint256 _timestamp) internal view returns (uint256 count) {
+        for (uint256 i = 0; i < _pools.length; i++) {
+            if (_pools[i].isActive && _pools[i].endTime > _timestamp) {
                 count++;
             }
         }
     }
 
-    function getCountActiveStakeEvent() external view returns (uint256) {
-        return _getCountActiveStakeEvent(block.timestamp);
+    function _getCountActivePools() external view returns (uint256) {
+        return _getCountActivePools(block.timestamp);
     }
 
-    function getActiveStakeEvents() external view returns (StakingLib.StakeEvent[] memory) {
+    function getActivePools() external view returns (StakingLib.Pool[] memory) {
         uint256 currentTimestamp = block.timestamp;
-        uint256 countActiveStakeEvent = _getCountActiveStakeEvent(currentTimestamp);
+        uint256 countActivePools = _getCountActivePools(currentTimestamp);
         uint256 count = 0;
 
-        StakingLib.StakeEvent[] memory activeStakeEventList = new StakingLib.StakeEvent[](countActiveStakeEvent);
+        StakingLib.Pool[] memory activePools = new StakingLib.Pool[](countActivePools);
 
-        for (uint256 i = 0; i < _stakeEvents.length; i++) {
-            if (_stakeEvents[i].isActive && _stakeEvents[i].endTime > currentTimestamp) {
-                activeStakeEventList[count++] = _stakeEvents[i];
+        for (uint256 i = 0; i < _pools.length; i++) {
+            if (_pools[i].isActive && _pools[i].endTime > currentTimestamp) {
+                activePools[count++] = _pools[i];
             }
         }
 
-        return activeStakeEventList;
+        return activePools;
     }
 
-    function stake(uint256 _stakeEventId, uint256 _amount) external nonReentrant {
-        StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
+    function stake(uint256 _poolId, uint256 _amount) external nonReentrant {
+        StakingLib.Pool memory pool = _pools[_poolId];
 
         require(_amount > 0, "Amount must be greater than 0");
-        require(stakeEvent.startTime <= block.timestamp, "It's not time to stake yet");
-        require(stakeEvent.isActive && stakeEvent.endTime >= block.timestamp, "Stake event closed");
-        require(stakeEvent.minTokenStake <= _amount, "Amount must be greater or equal min token stake");
-        require(stakeEvent.tokenStaked + _amount <= stakeEvent.maxTokenStake, "Over max token stake");
-        require(stakeEvent.token.transferFrom(_msgSender(), address(this), _amount), "Transfer failed");
+        require(pool.startTime <= block.timestamp, "It's not time to stake yet");
+        require(pool.isActive && pool.endTime >= block.timestamp, "Pool closed");
+        require(pool.minTokenStake <= _amount, "Amount must be greater or equal min token stake");
+        require(pool.tokenStaked + _amount <= pool.maxTokenStake, "Over max token stake");
+        require(pool.token.transferFrom(_msgSender(), address(this), _amount), "Transfer failed");
 
-        uint256 reward = (_amount * stakeEvent.rewardPercent) / 100;
+        uint256 reward = (_amount * pool.rewardPercent) / 100;
 
         require(
-            stakeEvent.rewardToken.balanceOf(address(this)) >=
-                _stakedAmounts[stakeEvent.rewardToken] + _rewardAmounts[stakeEvent.rewardToken] + reward,
+            pool.rewardToken.balanceOf(address(this)) >=
+                _stakedAmounts[pool.rewardToken] + _rewardAmounts[pool.rewardToken] + reward,
             "Contract not enough reward"
         );
 
-        StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_stakeEventId, block.timestamp, _amount, 0);
+        StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, _amount, 0);
 
-        _stakeEvents[_stakeEventId].tokenStaked += _amount;
-        _stakeInfoList[_stakeEventId][_msgSender()] = stakeInfo;
+        _pools[_poolId].tokenStaked += _amount;
+        _stakeInfoList[_poolId][_msgSender()] = stakeInfo;
 
-        _stakedAmounts[stakeEvent.token] += _amount;
-        _rewardAmounts[stakeEvent.rewardToken] += reward;
+        _stakedAmounts[pool.token] += _amount;
+        _rewardAmounts[pool.rewardToken] += reward;
 
-        emit Staked(_msgSender(), _stakeEventId, _amount);
+        emit Staked(_msgSender(), _poolId, _amount);
     }
 
-    function getStakeInfo(uint256 _stakeEventId, address _user) external view returns (StakingLib.StakeInfo memory) {
-        return _stakeInfoList[_stakeEventId][_user];
+    function getStakeInfo(uint256 _poolId, address _user) external view returns (StakingLib.StakeInfo memory) {
+        return _stakeInfoList[_poolId][_user];
     }
 
-    function _getRewardClaimable(uint256 _stakeEventId, address _user) internal view returns (uint256 rewardClaimable) {
-        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_stakeEventId][_user];
-        StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
+    function _getRewardClaimable(uint256 _poolId, address _user) internal view returns (uint256 rewardClaimable) {
+        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
+        StakingLib.Pool memory pool = _pools[_poolId];
 
         if (stakeInfo.amount == 0 || stakeInfo.withdrawTime != 0) return 0;
 
         uint256 stakeDays = (block.timestamp - stakeInfo.stakeTime) / 1 days;
 
-        rewardClaimable = (stakeInfo.amount * stakeDays * stakeEvent.rewardPercent) / (stakeEvent.cliff * 100);
+        rewardClaimable = (stakeInfo.amount * stakeDays * pool.rewardPercent) / (pool.cliff * 100);
     }
 
-    function getRewardClaimable(uint256 _stakeEventId, address _user) external view returns (uint256) {
-        return _getRewardClaimable(_stakeEventId, _user);
+    function getRewardClaimable(uint256 _poolId, address _user) external view returns (uint256) {
+        return _getRewardClaimable(_poolId, _user);
     }
 
     /** 
         @dev user withdraw token & reward
      */
-    function withdraw(uint256 _stakeEventId) external nonReentrant {
-        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_stakeEventId][_msgSender()];
-        StakingLib.StakeEvent memory stakeEvent = _stakeEvents[_stakeEventId];
+    function withdraw(uint256 _poolId) external nonReentrant {
+        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
+        StakingLib.Pool memory pool = _pools[_poolId];
 
-        require(!stakeEvent.isActive || stakeEvent.endTime < block.timestamp, "It's not time to withdraw yet");
+        require(!pool.isActive || pool.endTime < block.timestamp, "It's not time to withdraw yet");
         require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, "Nothing to withdraw");
 
-        uint256 rewardClaimable = _getRewardClaimable(_stakeEventId, _msgSender());
+        uint256 rewardClaimable = _getRewardClaimable(_poolId, _msgSender());
 
         require(
-            stakeEvent.token.balanceOf(address(this)) >= stakeInfo.amount,
+            pool.token.balanceOf(address(this)) >= stakeInfo.amount,
             "Staking contract not enough token, contact to dev team"
         );
         require(
-            stakeEvent.rewardToken.balanceOf(address(this)) >= rewardClaimable,
+            pool.rewardToken.balanceOf(address(this)) >= rewardClaimable,
             "Staking contract not enough reward, contact to dev team"
         );
-        require(stakeEvent.rewardToken.transfer(_msgSender(), rewardClaimable), "Transfer failed");
-        require(stakeEvent.token.transfer(_msgSender(), stakeInfo.amount), "Transfer failed");
+        require(pool.rewardToken.transfer(_msgSender(), rewardClaimable), "Transfer failed");
+        require(pool.token.transfer(_msgSender(), stakeInfo.amount), "Transfer failed");
 
-        uint256 rewardFullCliff = (stakeInfo.amount * stakeEvent.rewardPercent) / 100;
+        uint256 rewardFullCliff = (stakeInfo.amount * pool.rewardPercent) / 100;
 
-        _stakeInfoList[_stakeEventId][_msgSender()].withdrawTime = block.timestamp;
-        _stakedAmounts[stakeEvent.token] -= stakeInfo.amount;
-        _rewardAmounts[stakeEvent.rewardToken] -= rewardFullCliff - rewardClaimable;
+        _stakeInfoList[_poolId][_msgSender()].withdrawTime = block.timestamp;
+        _stakedAmounts[pool.token] -= stakeInfo.amount;
+        _rewardAmounts[pool.rewardToken] -= rewardFullCliff - rewardClaimable;
 
-        emit Withdrawn(_msgSender(), _stakeEventId, stakeInfo.amount, rewardClaimable);
+        emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, rewardClaimable);
     }
 
     function getStakedAmount(IERC20 _token) external view returns (uint256) {

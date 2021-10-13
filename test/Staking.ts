@@ -73,9 +73,9 @@ describe("Staking", function () {
     });
   });
 
-  describe("Add stake event", function () {
-    it("Should add stake event success", async () => {
-      await ownerStaking.createEvent(
+  describe("Add pool", function () {
+    it("Should add pool success", async () => {
+      await ownerStaking.createPool(
         startTestTime + 5,
         startTestTime + 24 * 60 * 60,
         TokenContract.address,
@@ -86,16 +86,16 @@ describe("Staking", function () {
         20,
       );
 
-      const stakeEvent = await ownerStaking.getStakeEvent(0);
-      const stakeEvents = await ownerStaking.getAllStakeEvents();
+      const pool = await ownerStaking.getPool(0);
+      const pools = await ownerStaking.getAllPools();
 
-      expect(stakeEvent.isActive && stakeEvents.length == 1).equal(true);
+      expect(pool.isActive && pools.length == 1).equal(true);
     });
   });
 
-  describe("Close stake event", function () {
-    it("Setup stake event inactive", async () => {
-      await ownerStaking.createEvent(
+  describe("Close pool", function () {
+    it("Setup pool inactive", async () => {
+      await ownerStaking.createPool(
         startTestTime + 5,
         startTestTime + 24 * 60 * 60,
         TokenContract.address,
@@ -107,22 +107,22 @@ describe("Staking", function () {
       );
 
       await ownerStaking.setBlockTimestamp(startTestTime + 100);
-      await ownerStaking.closeStakeEvent(1);
+      await ownerStaking.closePool(1);
 
-      const stakeEvent = await ownerStaking.getStakeEvent(1);
+      const pool = await ownerStaking.getPool(1);
 
-      expect(stakeEvent.isActive).equal(false);
+      expect(pool.isActive).equal(false);
     });
 
     it("Should not in active stake token list", async () => {
-      const activeStakeEvents = await ownerStaking.getActiveStakeEvents();
+      const activePools = await ownerStaking.getActivePools();
 
-      expect(activeStakeEvents.length).equal(1);
+      expect(activePools.length).equal(1);
     });
   });
 
   describe("User stake token", function () {
-    it("Should stake failed when stake event closed", async () => {
+    it("Should stake failed when pool closed", async () => {
       const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[1]);
 
       try {
@@ -130,11 +130,11 @@ describe("Staking", function () {
         expect(true).equal(false);
       } catch (err) {
         // @ts-ignore
-        expect(err?.message?.includes("Stake event closed")).equal(true);
+        expect(err?.message?.includes("Pool closed")).equal(true);
       }
     });
 
-    it("Should stake failed when stake event over end time", async () => {
+    it("Should stake failed when pool over end time", async () => {
       await ownerStaking.setBlockTimestamp(startTestTime + 2 * 24 * 60 * 60);
 
       const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[1]);
@@ -144,11 +144,11 @@ describe("Staking", function () {
         expect(true).equal(false);
       } catch (err) {
         // @ts-ignore
-        expect(err.message.includes("Stake event closed")).equal(true);
+        expect(err.message.includes("Pool closed")).equal(true);
       }
     });
 
-    it("Should stake success when event is open", async () => {
+    it("Should stake success when pool is open", async () => {
       await ownerStaking.setBlockTimestamp(startTestTime + 100);
       const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[1]);
       const userAddress = await accounts[1].getAddress();
@@ -162,7 +162,7 @@ describe("Staking", function () {
   });
 
   describe("Reward", function () {
-    it("Should return 0 reward when stake event not close", async () => {
+    it("Should return 0 reward when pool not close", async () => {
       const userAddress = await accounts[1].getAddress();
 
       const rewardClaimable: BigNumber = await ownerStaking.getRewardClaimable(0, userAddress);
@@ -170,28 +170,28 @@ describe("Staking", function () {
       expect(rewardClaimable.toHexString()).equal(BigNumber.from(0).toHexString());
     });
 
-    it("Should return reward when stake event close", async () => {
+    it("Should return reward when pool close", async () => {
       await ownerStaking.setBlockTimestamp(startTestTime + 10 * 24 * 60 * 60 + 100);
       const userAddress = await accounts[1].getAddress();
 
       const rewardClaimable: BigNumber = await ownerStaking.getRewardClaimable(0, userAddress);
       const stakeInfo = await ownerStaking.getStakeInfo(0, userAddress);
-      const stakeEvent = await ownerStaking.getStakeEvent(0);
+      const pool = await ownerStaking.getPool(0);
 
-      const reward = stakeInfo.amount.mul(10).mul(stakeEvent.rewardPercent).div(stakeEvent.cliff.mul(100));
+      const reward = stakeInfo.amount.mul(10).mul(pool.rewardPercent).div(pool.cliff.mul(100));
 
       expect(rewardClaimable.toHexString()).equal(reward.toHexString());
     });
 
-    it("Should return all reward when stake event over cliff", async () => {
+    it("Should return all reward when pool over cliff", async () => {
       await ownerStaking.setBlockTimestamp(startTestTime + 30 * 24 * 60 * 60 + 100);
       const userAddress = await accounts[1].getAddress();
 
       const rewardClaimable: BigNumber = await ownerStaking.getRewardClaimable(0, userAddress);
       const stakeInfo = await ownerStaking.getStakeInfo(0, userAddress);
-      const stakeEvent = await ownerStaking.getStakeEvent(0);
+      const pool = await ownerStaking.getPool(0);
 
-      const reward = stakeInfo.amount.mul(stakeEvent.rewardPercent).div(100);
+      const reward = stakeInfo.amount.mul(pool.rewardPercent).div(100);
 
       expect(rewardClaimable.toHexString()).equal(reward.toHexString());
     });
