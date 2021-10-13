@@ -8,6 +8,7 @@ library StakingLib {
         @dev represents one pool
      */
     struct Pool {
+        uint256 id;
         uint256 startTime;
         uint256 endTime;
         bool isActive; // isActive = false when admin close before end time

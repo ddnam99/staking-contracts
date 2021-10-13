@@ -58,6 +58,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         require(_rewardToken.transferFrom(_msgSender(), address(this), totalReward), "Transfer reward token failed");
 
         StakingLib.Pool memory pool = StakingLib.Pool(
+            _pools.length,
             _startTime,
             _endTime,
             true,
