@@ -198,29 +198,27 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
         StakingLib.Pool memory pool = _pools[_poolId];
 
-        require(!pool.isActive || pool.endTime < block.timestamp, "It's not time to withdraw yet");
+        require(stakeInfo.stakeTime + pool.cliff * 1 days <= block.timestamp, "It's not time to withdraw yet");
         require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, "Nothing to withdraw");
 
-        uint256 rewardClaimable = _getRewardClaimable(_poolId, _msgSender());
+        uint256 rewardFullCliff = (stakeInfo.amount * pool.rewardPercent) / 100;
 
         require(
             pool.token.balanceOf(address(this)) >= stakeInfo.amount,
             "Staking contract not enough token, contact to dev team"
         );
         require(
-            pool.rewardToken.balanceOf(address(this)) >= rewardClaimable,
+            pool.rewardToken.balanceOf(address(this)) >= rewardFullCliff,
             "Staking contract not enough reward, contact to dev team"
         );
-        require(pool.rewardToken.transfer(_msgSender(), rewardClaimable), "Transfer failed");
+        require(pool.rewardToken.transfer(_msgSender(), rewardFullCliff), "Transfer failed");
         require(pool.token.transfer(_msgSender(), stakeInfo.amount), "Transfer failed");
-
-        uint256 rewardFullCliff = (stakeInfo.amount * pool.rewardPercent) / 100;
 
         _stakeInfoList[_poolId][_msgSender()].withdrawTime = block.timestamp;
         _stakedAmounts[pool.token] -= stakeInfo.amount;
-        _rewardAmounts[pool.rewardToken] -= rewardFullCliff - rewardClaimable;
+        _rewardAmounts[pool.rewardToken] -= rewardFullCliff;
 
-        emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, rewardClaimable);
+        emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, rewardFullCliff);
     }
 
     function getStakedAmount(IERC20 _token) external view returns (uint256) {
