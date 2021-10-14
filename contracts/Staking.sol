@@ -101,7 +101,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         }
     }
 
-    function _getCountActivePools() external view returns (uint256) {
+    function getCountActivePools() external view returns (uint256) {
         return _getCountActivePools(block.timestamp);
     }
 
