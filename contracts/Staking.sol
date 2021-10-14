@@ -131,6 +131,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
     function stake(uint256 _poolId, uint256 _amount) external nonReentrant {
         StakingLib.Pool memory pool = _pools[_poolId];
+        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
+
+        require(stakeInfo.amount == 0 || stakeInfo.withdrawTime > 0, "Duplicate stake");
 
         require(_amount > 0, "Amount must be greater than 0");
         require(pool.startTime <= block.timestamp, "It's not time to stake yet");
@@ -147,7 +150,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
             "Contract not enough reward"
         );
 
-        StakingLib.StakeInfo memory stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, _amount, 0);
+        stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, _amount, 0);
         bytes32 ticketCode = _generateTicketCode(_poolId, _msgSender());
 
         _pools[_poolId].tokenStaked += _amount;
