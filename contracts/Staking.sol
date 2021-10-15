@@ -150,7 +150,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
             "Contract not enough reward"
         );
 
-        stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, _amount, 0);
+        stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, _amount, 0, 0);
         bytes32 ticketCode = _generateTicketCode(_poolId, _msgSender());
 
         _pools[_poolId].tokenStaked += _amount;

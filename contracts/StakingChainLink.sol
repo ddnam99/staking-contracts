@@ -6,22 +6,31 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
+import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
 import "hardhat/console.sol";
 
 import "./StakingLib.sol";
 
-contract StakingMock is Context, ReentrancyGuard, AccessControl {
+contract StakingChainLink is Context, VRFConsumerBase, ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
 
-    uint256 public blockTimestamp;
+    uint256 private _chainLinkFee;
+    bytes32 private _chainLinkKeyHash;
 
     StakingLib.Pool[] private _pools;
 
-    // poolId => account => stake info
-    mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
-    mapping(bytes32 => address) private _whiteList;
     mapping(IERC20 => uint256) private _stakedAmounts;
     mapping(IERC20 => uint256) private _rewardAmounts;
+
+    // poolId => account => stake info
+    mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
+
+    // chain link request id => beneficiary
+    mapping(bytes32 => address) private _requestRandomList;
+    // chain link request id => ticket code
+    mapping(bytes32 => uint256) private _ticketList;
+    // ticket code => beneficiary
+    mapping(uint256 => address) private _whiteList;
 
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "ADMIN role required");
@@ -33,9 +42,18 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     event Staked(address user, uint256 poolId, uint256 amount);
     event Withdrawn(address user, uint256 poolId, uint256 amount, uint256 reward);
 
-    constructor() {
-        _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
-        blockTimestamp = block.timestamp;
+    constructor(
+        address _multiSigAccount,
+        address _vrfAddress,
+        address _linkAddress,
+        bytes32 _keyHash,
+        uint256 _fee
+    ) VRFConsumerBase(_vrfAddress, _linkAddress) {
+        _chainLinkFee = _fee;
+        _chainLinkKeyHash = _keyHash;
+
+        _setupRole(DEFAULT_ADMIN_ROLE, _multiSigAccount);
+        renounceRole(DEFAULT_ADMIN_ROLE, _msgSender());
     }
 
     function createPool(
@@ -48,7 +66,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         IERC20 _rewardToken,
         uint256 _rewardPercent
     ) external nonReentrant onlyAdmin {
-        require(_startTime >= blockTimestamp, "Start time must be in future date");
+        require(_startTime >= block.timestamp, "Start time must be in future date");
         require(_endTime > _startTime, "End time must be greater than start time");
         require(_cliff != 0, "Cliff time must be not equal 0");
         require(_maxTokenStake > 0, "Max token stake must be greater than 0");
@@ -104,11 +122,11 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     }
 
     function getCountActivePools() external view returns (uint256) {
-        return _getCountActivePools(blockTimestamp);
+        return _getCountActivePools(block.timestamp);
     }
 
     function getActivePools() external view returns (StakingLib.Pool[] memory) {
-        uint256 currentTimestamp = blockTimestamp;
+        uint256 currentTimestamp = block.timestamp;
         uint256 countActivePools = _getCountActivePools(currentTimestamp);
         uint256 count = 0;
 
@@ -123,11 +141,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         return activePools;
     }
 
-    function _generateTicketCode(uint256 _poolId, address _user) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_poolId, _user));
-    }
-
-    function ownerOfTicketCode(bytes32 _ticketCode) external view returns (address beneficiary) {
+    function ownerOfTicketCode(uint256 _ticketCode) external view returns (address beneficiary) {
         return _whiteList[_ticketCode];
     }
 
@@ -138,8 +152,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         require(stakeInfo.amount == 0 || stakeInfo.withdrawTime > 0, "Duplicate stake");
 
         require(_amount > 0, "Amount must be greater than 0");
-        require(pool.startTime <= blockTimestamp, "It's not time to stake yet");
-        require(pool.isActive && pool.endTime >= blockTimestamp, "Pool closed");
+        require(pool.startTime <= block.timestamp, "It's not time to stake yet");
+        require(pool.isActive && pool.endTime >= block.timestamp, "Pool closed");
         require(pool.minTokenStake <= _amount, "Amount must be greater or equal min token stake");
         require(pool.tokenStaked + _amount <= pool.maxTokenStake, "Over max token stake");
         require(pool.token.transferFrom(_msgSender(), address(this), _amount), "Transfer failed");
@@ -152,8 +166,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
             "Contract not enough reward"
         );
 
-        stakeInfo = StakingLib.StakeInfo(_poolId, blockTimestamp, _amount, 0, 0);
-        bytes32 ticketCode = _generateTicketCode(_poolId, _msgSender());
+        bytes32 chainLinkRequestId = _getRandomNumber();
+        stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, _amount, 0, chainLinkRequestId);
 
         _pools[_poolId].tokenStaked += _amount;
         _stakeInfoList[_poolId][_msgSender()] = stakeInfo;
@@ -161,7 +175,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         _stakedAmounts[pool.token] += _amount;
         _rewardAmounts[pool.rewardToken] += reward;
 
-        _whiteList[ticketCode] = _msgSender();
+        _requestRandomList[chainLinkRequestId] = _msgSender();
 
         emit Staked(_msgSender(), _poolId, _amount);
     }
@@ -170,12 +184,12 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         return _stakeInfoList[_poolId][_user];
     }
 
-    function getTicketCode(uint256 _poolId, address _user) external view returns (bytes32) {
+    function getTicketCode(uint256 _poolId, address _user) external view returns (uint256) {
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
 
         require(stakeInfo.amount != 0, "No ticket code");
 
-        return _generateTicketCode(_poolId, _user);
+        return _ticketList[stakeInfo.chainLinkRequestId];
     }
 
     function _getRewardClaimable(uint256 _poolId, address _user) internal view returns (uint256 rewardClaimable) {
@@ -184,7 +198,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
 
         if (stakeInfo.amount == 0 || stakeInfo.withdrawTime != 0) return 0;
 
-        uint256 stakeDays = (blockTimestamp - stakeInfo.stakeTime) / 1 days;
+        uint256 stakeDays = (block.timestamp - stakeInfo.stakeTime) / 1 days;
 
         rewardClaimable = (stakeInfo.amount * stakeDays * pool.rewardPercent) / (pool.cliff * 100);
     }
@@ -200,7 +214,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
         StakingLib.Pool memory pool = _pools[_poolId];
 
-        require(stakeInfo.stakeTime + pool.cliff * 1 days <= blockTimestamp, "It's not time to withdraw yet");
+        require(stakeInfo.stakeTime + pool.cliff * 1 days <= block.timestamp, "It's not time to withdraw yet");
         require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, "Nothing to withdraw");
 
         uint256 rewardFullCliff = (stakeInfo.amount * pool.rewardPercent) / 100;
@@ -216,7 +230,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         require(pool.rewardToken.transfer(_msgSender(), rewardFullCliff), "Transfer failed");
         require(pool.token.transfer(_msgSender(), stakeInfo.amount), "Transfer failed");
 
-        _stakeInfoList[_poolId][_msgSender()].withdrawTime = blockTimestamp;
+        _stakeInfoList[_poolId][_msgSender()].withdrawTime = block.timestamp;
         _stakedAmounts[pool.token] -= stakeInfo.amount;
         _rewardAmounts[pool.rewardToken] -= rewardFullCliff;
 
@@ -245,7 +259,22 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         require(_token.transfer(_msgSender(), _amount), "Transfer failed");
     }
 
-    function setBlockTimestamp(uint256 _timestamp) external onlyAdmin {
-        blockTimestamp = _timestamp;
+    /**
+        @dev request random ticket code from chain link
+     */
+    function _getRandomNumber() internal returns (bytes32 requestId) {
+        require(LINK.balanceOf(address(this)) >= _chainLinkFee, "Not enough LINK - contact to dev team");
+
+        return requestRandomness(_chainLinkKeyHash, _chainLinkFee);
+    }
+
+    /**
+        @dev chain link return random ticket code
+     */
+    function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
+        _ticketList[requestId] = randomness;
+        _whiteList[randomness] = _requestRandomList[requestId];
+
+        delete _requestRandomList[requestId];
     }
 }

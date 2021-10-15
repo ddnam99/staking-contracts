@@ -30,5 +30,6 @@ library StakingLib {
         uint256 stakeTime;
         uint256 amount;
         uint256 withdrawTime;
+        bytes32 chainLinkRequestId;
     }
 }
