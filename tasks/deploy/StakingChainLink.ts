@@ -27,7 +27,7 @@ if (!keyHash) {
   throw new Error("Please set your KEY_HASH in a .env file");
 }
 
-const fee: BigNumber = BigNumber.from(Number(process.env.FEE) * 10).mul(BigNumber.from(10).mul(18));
+const fee: BigNumber = BigNumber.from(Number(process.env.FEE) * 10).mul(BigNumber.from(10).mul(17));
 if (!fee) {
   throw new Error("Please set your FEE in a .env file");
 }

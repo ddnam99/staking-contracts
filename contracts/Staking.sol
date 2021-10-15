@@ -184,7 +184,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         uint256 stakeDays = (block.timestamp - stakeInfo.stakeTime) / 1 days;
 
-        rewardClaimable = (stakeInfo.amount * stakeDays * pool.rewardPercent) / (pool.cliff * 100);
+        rewardClaimable = (stakeInfo.amount * stakeDays * pool.rewardPercent) / (365 * 100);
     }
 
     function getRewardClaimable(uint256 _poolId, address _user) external view returns (uint256) {
@@ -201,7 +201,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         require(stakeInfo.stakeTime + pool.cliff * 1 days <= block.timestamp, "It's not time to withdraw yet");
         require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, "Nothing to withdraw");
 
-        uint256 rewardFullCliff = (stakeInfo.amount * pool.rewardPercent) / 100;
+        uint256 rewardFullCliff = (stakeInfo.amount * pool.rewardPercent) / (365 * 100);
 
         require(
             pool.token.balanceOf(address(this)) >= stakeInfo.amount,
