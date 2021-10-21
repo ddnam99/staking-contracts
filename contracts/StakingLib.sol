@@ -15,11 +15,13 @@ library StakingLib {
         IERC20 token; // token stake
         uint256 minTokenStake; // minimum token user can stake
         uint256 maxTokenStake; // maximum total token all user can stake
+        uint256 maxPoolToken;
         uint256 tokenStaked;
-        uint256 cliff; // days
+        uint256 duration; // days
         IERC20 rewardToken;
         uint256 rewardPercent;
-        uint256 totalReward; // maximum reward token
+        bool isIncludeWL; // 
+        uint256 conditionWL; // min token stake to white list
     }
 
     /**
@@ -30,6 +32,5 @@ library StakingLib {
         uint256 stakeTime;
         uint256 amount;
         uint256 withdrawTime;
-        bytes32 chainLinkRequestId;
     }
 }
