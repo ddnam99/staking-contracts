@@ -46,30 +46,35 @@ describe("Staking", function () {
       expect(isAdmin).equal(true);
     });
 
-    it("Should mint 10000 token for accounts", async () => {
+    it("Should mint 100000000 token for accounts", async () => {
       await Promise.all(
         accounts.map(async acc => {
-          return await ownerToken.mint(await acc.getAddress(), BigNumber.from(10000).mul(decimalMultiplier));
+          return await ownerToken.mint(await acc.getAddress(), BigNumber.from(100000000).mul(decimalMultiplier));
         }),
       );
 
+      await ownerToken.mint(await ownerStaking.signer.getAddress(), BigNumber.from(100000000).mul(decimalMultiplier));
+
       const balanceOfUser5: BigNumber = await ownerToken.balanceOf(await accounts[5].getAddress());
-      expect(balanceOfUser5.toHexString()).equal(BigNumber.from(10000).mul(decimalMultiplier).toHexString());
+      expect(balanceOfUser5.toHexString()).equal(BigNumber.from(100000000).mul(decimalMultiplier).toHexString());
     });
 
-    it("Should approve 10000 token for StakingContract", async () => {
+    it("Should approve 100000000 token for StakingContract", async () => {
       await Promise.all(
         accounts.map(async acc => {
           const user = await hre.ethers.getContractAt("Token", TokenContract.address, acc);
-          return await user.approve(StakingContract.address, BigNumber.from(10000).mul(decimalMultiplier));
+          return await user.approve(StakingContract.address, BigNumber.from(100000000).mul(decimalMultiplier));
         }),
       );
+
+      const owStaking = await hre.ethers.getContractAt("Token", TokenContract.address, ownerStaking.signer);
+      await owStaking.approve(StakingContract.address, BigNumber.from(100000000).mul(decimalMultiplier))
 
       const allowance: BigNumber = await TokenContract.allowance(
         await accounts[5].getAddress(),
         StakingContract.address,
       );
-      expect(allowance.toHexString()).equal(BigNumber.from(10000).mul(decimalMultiplier).toHexString());
+      expect(allowance.toHexString()).equal(BigNumber.from(100000000).mul(decimalMultiplier).toHexString());
     });
   });
 
@@ -79,14 +84,17 @@ describe("Staking", function () {
         startTestTime + 5,
         startTestTime + 24 * 60 * 60,
         TokenContract.address,
-        BigNumber.from(1).mul(decimalMultiplier),
-        BigNumber.from(1000).mul(decimalMultiplier),
-        30,
+        BigNumber.from(100).mul(decimalMultiplier),
+        BigNumber.from(10000).mul(decimalMultiplier),
+        BigNumber.from(1000000).mul(decimalMultiplier),
+        90,
         TokenContract.address,
         20,
+        true,
+        BigNumber.from(2000).mul(decimalMultiplier)
       );
 
-      const pool = await ownerStaking.getPool(0);
+      const pool = await ownerStaking.getDetailPool(0);
       const pools = await ownerStaking.getAllPools();
 
       expect(pool.isActive && pools.length == 1).equal(true);
@@ -99,17 +107,20 @@ describe("Staking", function () {
         startTestTime + 5,
         startTestTime + 24 * 60 * 60,
         TokenContract.address,
-        BigNumber.from(1).mul(decimalMultiplier),
-        BigNumber.from(1000).mul(decimalMultiplier),
-        30,
+        BigNumber.from(100).mul(decimalMultiplier),
+        BigNumber.from(10000).mul(decimalMultiplier),
+        BigNumber.from(1000000).mul(decimalMultiplier),
+        90,
         TokenContract.address,
         20,
+        true,
+        BigNumber.from(2000).mul(decimalMultiplier)
       );
 
       await ownerStaking.setBlockTimestamp(startTestTime + 100);
       await ownerStaking.closePool(1);
 
-      const pool = await ownerStaking.getPool(1);
+      const pool = await ownerStaking.getDetailPool(1);
 
       expect(pool.isActive).equal(false);
     });
@@ -150,58 +161,84 @@ describe("Staking", function () {
 
     it("Should stake success when pool is open", async () => {
       await ownerStaking.setBlockTimestamp(startTestTime + 100);
-      const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[1]);
-      const userAddress = await accounts[1].getAddress();
+      const user1 = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[1]);
+      const user2 = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[2]);
+      const user3 = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[3]);
+      const user4 = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[4]);
+      const userAddress1 = await accounts[1].getAddress();
 
-      await user.stake(0, BigNumber.from(200).mul(decimalMultiplier));
+      await user1.stake(0, BigNumber.from(2000).mul(decimalMultiplier));
+      await user2.stake(0, BigNumber.from(200).mul(decimalMultiplier));
+      await user3.stake(0, BigNumber.from(200).mul(decimalMultiplier));
+      await user4.stake(0, BigNumber.from(2000).mul(decimalMultiplier));
 
-      const stakeInfo = await user.getStakeInfo(0, userAddress);
+      const stakeInfo = await user1.getStakeInfo(0, userAddress1);
 
-      expect(stakeInfo.amount.toHexString()).equal(BigNumber.from(200).mul(decimalMultiplier).toHexString());
+      expect(stakeInfo.amount.toHexString()).equal(BigNumber.from(2000).mul(decimalMultiplier).toHexString());
     });
 
-    it("Should generate ticket code after stake", async () => {
+    it("Should in WL after stake qualified", async () => {
       const userAddress = await accounts[1].getAddress();
 
-      const ticketCode = await ownerStaking.getTicketCode(0, userAddress);
+      const isWL = await ownerStaking.checkWhiteList(0, userAddress);
 
-      const ownerTicketCode = await ownerStaking.ownerOfTicketCode(ticketCode);
+      expect(isWL).equal(true);
+    });
 
-      expect(ownerTicketCode).equal(userAddress);
+    it("Should not in WL after stake not qualified", async () => {
+      const userAddress = await accounts[2].getAddress();
+
+      const isWL = await ownerStaking.checkWhiteList(0, userAddress);
+
+      expect(isWL).equal(false);
+    });
+
+    it("Should not in WL after withdraw before pool duration", async () => {
+      const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[4]);
+      const userAddress = await accounts[4].getAddress();
+
+      user.withdraw(0);
+      const isWL = await ownerStaking.checkWhiteList(0, userAddress);
+
+      expect(isWL).equal(false);
     });
   });
 
   describe("Reward", function () {
     it("Should return 0 reward when pool not close", async () => {
-      const userAddress = await accounts[1].getAddress();
+      const userAddress = await accounts[2].getAddress();
 
       const rewardClaimable: BigNumber = await ownerStaking.getRewardClaimable(0, userAddress);
 
       expect(rewardClaimable.toHexString()).equal(BigNumber.from(0).toHexString());
     });
 
-    it("Should return reward when pool close", async () => {
+    it("Should return 0 reward when not over pool duration", async () => {
       await ownerStaking.setBlockTimestamp(startTestTime + 10 * 24 * 60 * 60 + 100);
-      const userAddress = await accounts[1].getAddress();
+      const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[3]);
+      const userAddress = await accounts[3].getAddress();
 
-      const rewardClaimable: BigNumber = await ownerStaking.getRewardClaimable(0, userAddress);
       const stakeInfo = await ownerStaking.getStakeInfo(0, userAddress);
-      const pool = await ownerStaking.getPool(0);
+      const oldBalanceOfUser: BigNumber = await ownerToken.balanceOf(userAddress);
 
-      const reward = stakeInfo.amount.mul(10).mul(pool.rewardPercent).div(pool.cliff.mul(100));
+      await user.withdraw(0);
 
-      expect(rewardClaimable.toHexString()).equal(reward.toHexString());
+      const currentBalanceOfUser: BigNumber = await ownerToken.balanceOf(userAddress);
+
+      expect(currentBalanceOfUser.toHexString()).equal(
+        oldBalanceOfUser.add(stakeInfo.amount).toHexString(),
+      );
     });
 
-    it("Should return all reward when pool over cliff", async () => {
-      await ownerStaking.setBlockTimestamp(startTestTime + 30 * 24 * 60 * 60 + 100);
+    it("Should return all reward when pool over duration", async () => {
+      await ownerStaking.setBlockTimestamp(startTestTime + 100 * 24 * 60 * 60 + 100);
       const userAddress = await accounts[1].getAddress();
 
       const rewardClaimable: BigNumber = await ownerStaking.getRewardClaimable(0, userAddress);
       const stakeInfo = await ownerStaking.getStakeInfo(0, userAddress);
-      const pool = await ownerStaking.getPool(0);
+      const pool = await ownerStaking.getDetailPool(0);
 
-      const reward = stakeInfo.amount.mul(pool.rewardPercent).div(100);
+      const reward = stakeInfo.amount.mul(pool.rewardPercent).div(365*100);
 
       expect(rewardClaimable.toHexString()).equal(reward.toHexString());
     });

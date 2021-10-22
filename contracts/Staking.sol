@@ -167,6 +167,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][account];
 
         if(!pool.isIncludeWL) return false;
+        if(stakeInfo.withdrawTime != 0 && stakeInfo.stakeTime + pool.duration * 1 days > stakeInfo.withdrawTime) return false;
         if(pool.conditionWL > stakeInfo.amount) return false;
 
         return true;
@@ -184,7 +185,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         uint256 stakeDays = (block.timestamp - stakeInfo.stakeTime) / 1 days;
 
-        rewardClaimable = (stakeInfo.amount * stakeDays * pool.rewardPercent) / (365 * 100);
+        if(stakeDays > pool.duration) stakeDays = pool.duration;
+
+        rewardClaimable = (stakeInfo.amount * stakeDays * pool.rewardPercent) / (pool.duration * 365 * 100);
     }
 
     /**
@@ -205,7 +208,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         uint256 reward = 0;
         uint256 rewardFullDuration = (stakeInfo.amount * pool.rewardPercent) / (365 * 100);
-        if(stakeInfo.stakeTime + pool.duration * 1 days >= block.timestamp){
+        if(stakeInfo.stakeTime + pool.duration * 1 days <= block.timestamp){
             reward = rewardFullDuration;
         }
 
