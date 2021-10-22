@@ -205,7 +205,7 @@ describe("Staking", function () {
   });
 
   describe("Reward", function () {
-    it("Should return 0 reward when pool not close", async () => {
+    it("Should return 0 reward before value date", async () => {
       const userAddress = await accounts[2].getAddress();
 
       const rewardClaimable: BigNumber = await ownerStaking.getRewardClaimable(0, userAddress);

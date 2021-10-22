@@ -30,6 +30,7 @@ library StakingLib {
     struct StakeInfo {
         uint256 poolId;
         uint256 stakeTime;
+        uint256 valueDate;
         uint256 amount;
         uint256 withdrawTime;
     }

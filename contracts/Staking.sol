@@ -151,7 +151,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
             Error.CONTRACT_NOT_ENOUGH_REWARD
         );
 
-        stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, _amount, 0);
+        uint256 valueDate = (block.timestamp / 1 days) * 1 days + 1 days + 7 hours;
+
+        stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, valueDate, _amount, 0);
 
         _pools[_poolId].tokenStaked += _amount;
         _stakeInfoList[_poolId][_msgSender()] = stakeInfo;
@@ -182,8 +184,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.Pool memory pool = _pools[_poolId];
 
         if (stakeInfo.amount == 0 || stakeInfo.withdrawTime != 0) return 0;
+        if (stakeInfo.valueDate > block.timestamp) return 0;
 
-        uint256 stakeDays = (block.timestamp - stakeInfo.stakeTime) / 1 days;
+        uint256 stakeDays = (block.timestamp - stakeInfo.valueDate) / 1 days;
 
         if(stakeDays > pool.duration) stakeDays = pool.duration;
 
@@ -208,7 +211,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         uint256 reward = 0;
         uint256 rewardFullDuration = (stakeInfo.amount * pool.rewardPercent) / (365 * 100);
-        if(stakeInfo.stakeTime + pool.duration * 1 days <= block.timestamp){
+        if(stakeInfo.valueDate + pool.duration * 1 days <= block.timestamp){
             reward = rewardFullDuration;
         }
 
