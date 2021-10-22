@@ -14,13 +14,13 @@ library StakingLib {
         bool isActive; // isActive = false when admin close before end time
         IERC20 token; // token stake
         uint256 minTokenStake; // minimum token user can stake
-        uint256 maxTokenStake; // maximum total token all user can stake
-        uint256 maxPoolToken;
+        uint256 maxTokenStake; // maximum total user can stake
+        uint256 maxPoolToken; // maximum total token all user can stake
         uint256 tokenStaked;
         uint256 duration; // days
         IERC20 rewardToken;
         uint256 rewardPercent;
-        bool isIncludeWL; // 
+        bool isIncludeWL;
         uint256 conditionWL; // min token stake to white list
     }
 

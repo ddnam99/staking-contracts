@@ -68,7 +68,7 @@ describe("Staking", function () {
       );
 
       const owStaking = await hre.ethers.getContractAt("Token", TokenContract.address, ownerStaking.signer);
-      await owStaking.approve(StakingContract.address, BigNumber.from(100000000).mul(decimalMultiplier))
+      await owStaking.approve(StakingContract.address, BigNumber.from(100000000).mul(decimalMultiplier));
 
       const allowance: BigNumber = await TokenContract.allowance(
         await accounts[5].getAddress(),
@@ -91,7 +91,7 @@ describe("Staking", function () {
         TokenContract.address,
         20,
         true,
-        BigNumber.from(2000).mul(decimalMultiplier)
+        BigNumber.from(2000).mul(decimalMultiplier),
       );
 
       const pool = await ownerStaking.getDetailPool(0);
@@ -114,7 +114,7 @@ describe("Staking", function () {
         TokenContract.address,
         20,
         true,
-        BigNumber.from(2000).mul(decimalMultiplier)
+        BigNumber.from(2000).mul(decimalMultiplier),
       );
 
       await ownerStaking.setBlockTimestamp(startTestTime + 100);
@@ -225,9 +225,7 @@ describe("Staking", function () {
 
       const currentBalanceOfUser: BigNumber = await ownerToken.balanceOf(userAddress);
 
-      expect(currentBalanceOfUser.toHexString()).equal(
-        oldBalanceOfUser.add(stakeInfo.amount).toHexString(),
-      );
+      expect(currentBalanceOfUser.toHexString()).equal(oldBalanceOfUser.add(stakeInfo.amount).toHexString());
     });
 
     it("Should return all reward when pool over duration", async () => {
@@ -238,7 +236,7 @@ describe("Staking", function () {
       const stakeInfo = await ownerStaking.getStakeInfo(0, userAddress);
       const pool = await ownerStaking.getDetailPool(0);
 
-      const reward = stakeInfo.amount.mul(pool.rewardPercent).div(365*100);
+      const reward = stakeInfo.amount.mul(pool.rewardPercent).div(365 * 100);
 
       expect(rewardClaimable.toHexString()).equal(reward.toHexString());
     });

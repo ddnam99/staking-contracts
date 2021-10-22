@@ -2,7 +2,6 @@
 pragma solidity 0.8.2;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
@@ -12,8 +11,6 @@ import "./StakingLib.sol";
 import "./Error.sol";
 
 contract Staking is Context, ReentrancyGuard, AccessControl {
-    using SafeERC20 for IERC20;
-
     StakingLib.Pool[] private _pools;
 
     // poolId => account => stake info
@@ -151,6 +148,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
             Error.CONTRACT_NOT_ENOUGH_REWARD
         );
 
+        // 07:00 UTC next day
         uint256 valueDate = (block.timestamp / 1 days) * 1 days + 1 days + 7 hours;
 
         stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, valueDate, _amount, 0);
@@ -164,13 +162,14 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         emit Staked(_msgSender(), _poolId, _amount);
     }
 
-    function checkWhiteList(uint256 _poolId, address account) external view returns(bool) {
+    function checkWhiteList(uint256 _poolId, address account) external view returns (bool) {
         StakingLib.Pool memory pool = _pools[_poolId];
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][account];
 
-        if(!pool.isIncludeWL) return false;
-        if(stakeInfo.withdrawTime != 0 && stakeInfo.stakeTime + pool.duration * 1 days > stakeInfo.withdrawTime) return false;
-        if(pool.conditionWL > stakeInfo.amount) return false;
+        if (!pool.isIncludeWL) return false;
+        if (stakeInfo.withdrawTime != 0 && stakeInfo.stakeTime + pool.duration * 1 days > stakeInfo.withdrawTime)
+            return false;
+        if (pool.conditionWL > stakeInfo.amount) return false;
 
         return true;
     }
@@ -188,14 +187,11 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         uint256 stakeDays = (block.timestamp - stakeInfo.valueDate) / 1 days;
 
-        if(stakeDays > pool.duration) stakeDays = pool.duration;
+        if (stakeDays > pool.duration) stakeDays = pool.duration;
 
         rewardClaimable = (stakeInfo.amount * stakeDays * pool.rewardPercent) / (pool.duration * 365 * 100);
     }
 
-    /**
-        @dev Số lãi mà user tích luỹ từ ngày gửi
-     */
     function getRewardClaimable(uint256 _poolId, address _user) external view returns (uint256) {
         return _getRewardClaimable(_poolId, _user);
     }
@@ -211,7 +207,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         uint256 reward = 0;
         uint256 rewardFullDuration = (stakeInfo.amount * pool.rewardPercent) / (365 * 100);
-        if(stakeInfo.valueDate + pool.duration * 1 days <= block.timestamp){
+        if (stakeInfo.valueDate + pool.duration * 1 days <= block.timestamp) {
             reward = rewardFullDuration;
         }
 

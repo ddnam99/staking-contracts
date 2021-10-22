@@ -7,9 +7,7 @@
     "experimentalDecorators": true,
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
-    "lib": [
-      "es6"
-    ],
+    "lib": ["es6"],
     "module": "commonjs",
     "moduleResolution": "node",
     "noImplicitAny": true,
@@ -17,27 +15,9 @@
     "resolveJsonModule": true,
     "sourceMap": false,
     "strict": true,
-    "target": "es6",
-    "baseUrl": ".",
-    "paths": {
-      "@config/*": [
-        "config/*"
-      ],
-      "@interfaces/*": [
-        "interfaces/*"
-      ]
-    }
+    "target": "es6"
   },
-  "exclude": [
-    "node_modules"
-  ],
-  "files": [
-    "./hardhat.config.ts"
-  ],
-  "include": [
-    "tasks/**/*.ts",
-    "test/**/*.ts",
-    "typechain/**/*.d.ts",
-    "typechain/**/*.ts"
-  ]
+  "exclude": ["node_modules"],
+  "files": ["./hardhat.config.ts"],
+  "include": ["tasks/**/*.ts", "test/**/*.ts", "typechain/**/*.d.ts", "typechain/**/*.ts"]
 }
