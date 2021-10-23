@@ -10,8 +10,7 @@ library StakingLib {
     struct Pool {
         uint256 id;
         uint256 startTime;
-        uint256 endTime;
-        bool isActive; // isActive = false when admin close before end time
+        bool isActive;
         IERC20 token; // token stake
         uint256 minTokenStake; // minimum token user can stake
         uint256 maxTokenStake; // maximum total user can stake

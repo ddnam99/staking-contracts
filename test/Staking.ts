@@ -82,7 +82,6 @@ describe("Staking", function () {
     it("Should add pool success", async () => {
       await ownerStaking.createPool(
         startTestTime + 5,
-        startTestTime + 24 * 60 * 60,
         TokenContract.address,
         BigNumber.from(100).mul(decimalMultiplier),
         BigNumber.from(10000).mul(decimalMultiplier),
@@ -105,7 +104,6 @@ describe("Staking", function () {
     it("Setup pool inactive", async () => {
       await ownerStaking.createPool(
         startTestTime + 5,
-        startTestTime + 24 * 60 * 60,
         TokenContract.address,
         BigNumber.from(100).mul(decimalMultiplier),
         BigNumber.from(10000).mul(decimalMultiplier),

@@ -37,7 +37,6 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
     function createPool(
         uint256 _startTime,
-        uint256 _endTime,
         IERC20 _token,
         uint256 _minTokenStake,
         uint256 _maxTokenStake,
@@ -49,8 +48,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         uint256 _conditionWL
     ) external nonReentrant onlyAdmin {
         require(_startTime >= block.timestamp, Error.START_TIME_MUST_IN_FUTURE_DATE);
-        require(_endTime > _startTime, Error.END_TIME_MUST_GREATER_START_TIME);
         require(_duration != 0, Error.DURATION_MUST_NOT_EQUAL_ZERO);
+        require(_minTokenStake > 0, Error.MIN_TOKEN_STAKE_MUST_GREATER_ZERO);
         require(_maxTokenStake > 0, Error.MAX_TOKEN_STAKE_MUST_GREATER_ZERO);
         require(_maxPoolToken > 0, Error.MAX_POOL_TOKEN_MUST_GREATER_ZERO);
         require(_rewardPercent > 0 && _rewardPercent <= 100, Error.REWARD_PERCENT_MUST_IN_RANGE_BETWEEN_ONE_TO_HUNDRED);
@@ -62,7 +61,6 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.Pool memory pool = StakingLib.Pool(
             _pools.length,
             _startTime,
-            _endTime,
             true,
             _token,
             _minTokenStake,
@@ -81,9 +79,6 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         emit NewPool(_pools.length - 1);
     }
 
-    /**
-        @dev admin close pool before end time
-     */
     function closePool(uint256 _poolId) external nonReentrant onlyAdmin {
         _pools[_poolId].isActive = false;
 
@@ -98,27 +93,32 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return _pools;
     }
 
-    function _getCountActivePools(uint256 _timestamp) internal view returns (uint256 count) {
+    /**
+        @dev count pools is active an staked amount less than max pool token
+     */
+    function _getCountActivePools() internal view returns (uint256 count) {
         for (uint256 i = 0; i < _pools.length; i++) {
-            if (_pools[i].isActive && _pools[i].endTime > _timestamp) {
+            if (_pools[i].isActive && _pools[i].tokenStaked < _pools[i].maxPoolToken) {
                 count++;
             }
         }
     }
 
     function getCountActivePools() external view returns (uint256) {
-        return _getCountActivePools(block.timestamp);
+        return _getCountActivePools();
     }
 
+    /**
+        @dev list pools is active an staked amount less than max pool token
+     */
     function getActivePools() external view returns (StakingLib.Pool[] memory) {
-        uint256 currentTimestamp = block.timestamp;
-        uint256 countActivePools = _getCountActivePools(currentTimestamp);
+        uint256 countActivePools = _getCountActivePools();
         uint256 count = 0;
 
         StakingLib.Pool[] memory activePools = new StakingLib.Pool[](countActivePools);
 
         for (uint256 i = 0; i < _pools.length; i++) {
-            if (_pools[i].isActive && _pools[i].endTime > currentTimestamp) {
+            if (_pools[i].isActive && _pools[i].tokenStaked < _pools[i].maxPoolToken) {
                 activePools[count++] = _pools[i];
             }
         }
@@ -126,6 +126,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return activePools;
     }
 
+    /** 
+        @dev value date start 07:00 UTC next day
+     */
     function stake(uint256 _poolId, uint256 _amount) external nonReentrant {
         StakingLib.Pool memory pool = _pools[_poolId];
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
@@ -134,7 +137,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         require(_amount > 0, Error.AMOUNT_MUST_GREATER_ZERO);
         require(pool.startTime <= block.timestamp, Error.IT_NOT_TIME_STAKE_YET);
-        require(pool.isActive && pool.endTime >= block.timestamp, Error.POOL_CLOSED);
+        require(pool.isActive && pool.tokenStaked < pool.maxPoolToken, Error.POOL_CLOSED);
         require(pool.minTokenStake <= _amount, Error.AMOUNT_MUST_GREATER_OR_EQUAL_MIN_TOKEN_STAKE);
         require(pool.maxTokenStake >= _amount, Error.AMOUNT_MUST_LESS_OR_EQUAL_MAX_TOKEN_STAKE);
         require(pool.tokenStaked + _amount <= pool.maxPoolToken, Error.OVER_MAX_TOKEN_STAKE);
@@ -162,6 +165,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         emit Staked(_msgSender(), _poolId, _amount);
     }
 
+    /**
+        @dev if pool include white list and user stake amount qualified 
+     */
     function checkWhiteList(uint256 _poolId, address account) external view returns (bool) {
         StakingLib.Pool memory pool = _pools[_poolId];
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][account];
@@ -174,6 +180,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return true;
     }
 
+    /**
+        @dev stake info in pool by user
+     */
     function getStakeInfo(uint256 _poolId, address _user) external view returns (StakingLib.StakeInfo memory) {
         return _stakeInfoList[_poolId][_user];
     }
@@ -197,7 +206,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     }
 
     /** 
-        @dev user withdraw token & reward
+        @dev user withdraw token & reward (reward is 0 when withdraw before duration)
      */
     function withdraw(uint256 _poolId) external nonReentrant {
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
@@ -224,10 +233,16 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, reward);
     }
 
+    /**
+        @dev all token in all pools holders staked
+     */
     function getStakedAmount(IERC20 _token) external view returns (uint256) {
         return _stakedAmounts[_token];
     }
 
+    /**
+        @dev all rewards in all pools to paid holders
+     */
     function getRewardAmount(IERC20 _token) external view returns (uint256) {
         return _rewardAmounts[_token];
     }

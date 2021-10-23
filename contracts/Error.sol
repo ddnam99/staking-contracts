@@ -5,8 +5,8 @@ library Error {
     string public constant ADMIN_ROLE_REQUIRED = "Error: ADMIN role required";
 
     string public constant START_TIME_MUST_IN_FUTURE_DATE = "Error: Start time must be in future date";
-    string public constant END_TIME_MUST_GREATER_START_TIME = "Error: End time must be greater than start time";
     string public constant DURATION_MUST_NOT_EQUAL_ZERO = "Error: Duration must be not equal 0";
+    string public constant MIN_TOKEN_STAKE_MUST_GREATER_ZERO = "Error: Min token stake must be greater than 0";
     string public constant MAX_TOKEN_STAKE_MUST_GREATER_ZERO = "Error: Max token stake must be greater than 0";
     string public constant MAX_POOL_TOKEN_MUST_GREATER_ZERO = "Error: Max pool token must be greater than 0";
     string public constant REWARD_PERCENT_MUST_IN_RANGE_BETWEEN_ONE_TO_HUNDRED =
