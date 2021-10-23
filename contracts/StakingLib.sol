@@ -18,7 +18,8 @@ library StakingLib {
         uint256 tokenStaked;
         uint256 duration; // days
         IERC20 rewardToken;
-        uint256 rewardPercent;
+        uint256 apr;
+        uint256 denominatorAPR;
         bool isIncludeWL;
         uint256 conditionWL; // min token stake to white list
     }

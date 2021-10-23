@@ -13,6 +13,8 @@ import "./Error.sol";
 contract Staking is Context, ReentrancyGuard, AccessControl {
     StakingLib.Pool[] private _pools;
 
+    uint256 public daysOfYear = 365;
+
     // poolId => account => stake info
     mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
     // amount token holders staked
@@ -43,7 +45,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         uint256 _maxPoolToken,
         uint256 _duration,
         IERC20 _rewardToken,
-        uint256 _rewardPercent,
+        uint256 _apr,
+        uint256 _denominatorAPR,
         bool _isIncludeWL,
         uint256 _conditionWL
     ) external nonReentrant onlyAdmin {
@@ -52,9 +55,10 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         require(_minTokenStake > 0, Error.MIN_TOKEN_STAKE_MUST_GREATER_ZERO);
         require(_maxTokenStake > 0, Error.MAX_TOKEN_STAKE_MUST_GREATER_ZERO);
         require(_maxPoolToken > 0, Error.MAX_POOL_TOKEN_MUST_GREATER_ZERO);
-        require(_rewardPercent > 0 && _rewardPercent <= 100, Error.REWARD_PERCENT_MUST_IN_RANGE_BETWEEN_ONE_TO_HUNDRED);
+        require(_denominatorAPR > 0, Error.DENOMINATOR_APR_MUST_GREATER_ZERO);
+        require(_apr > 0 && _apr <= _denominatorAPR, Error.REWARD_PERCENT_MUST_IN_RANGE_BETWEEN_ONE_TO_HUNDRED);
 
-        uint256 totalReward = (_maxPoolToken * _rewardPercent) / 100;
+        uint256 totalReward = (_maxPoolToken * _duration * _apr) / (daysOfYear * _denominatorAPR);
 
         require(_rewardToken.transferFrom(_msgSender(), address(this), totalReward), Error.TRANSFER_REWARD_FAILED);
 
@@ -69,7 +73,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
             0,
             _duration,
             _rewardToken,
-            _rewardPercent,
+            _apr,
+            _denominatorAPR,
             _isIncludeWL,
             _conditionWL
         );
@@ -143,7 +148,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         require(pool.tokenStaked + _amount <= pool.maxPoolToken, Error.OVER_MAX_TOKEN_STAKE);
         require(pool.token.transferFrom(_msgSender(), address(this), _amount), Error.TRANSFER_TOKEN_FAILED);
 
-        uint256 reward = (_amount * pool.rewardPercent) / 100;
+        uint256 reward = (_amount * pool.duration * pool.apr) / (daysOfYear  * pool.denominatorAPR);
 
         require(
             pool.rewardToken.balanceOf(address(this)) >=
@@ -198,7 +203,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         if (stakeDays > pool.duration) stakeDays = pool.duration;
 
-        rewardClaimable = (stakeInfo.amount * stakeDays * pool.rewardPercent) / (pool.duration * 365 * 100);
+        rewardClaimable = (stakeInfo.amount * stakeDays * pool.apr) / (daysOfYear * pool.denominatorAPR);
     }
 
     function getRewardClaimable(uint256 _poolId, address _user) external view returns (uint256) {
@@ -215,7 +220,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, Error.NOTHING_TO_WITHDRAW);
 
         uint256 reward = 0;
-        uint256 rewardFullDuration = (stakeInfo.amount * pool.rewardPercent) / (365 * 100);
+        uint256 rewardFullDuration = (stakeInfo.amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
         if (stakeInfo.valueDate + pool.duration * 1 days <= block.timestamp) {
             reward = rewardFullDuration;
         }

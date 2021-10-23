@@ -89,6 +89,7 @@ describe("Staking", function () {
         90,
         TokenContract.address,
         20,
+        100,
         true,
         BigNumber.from(2000).mul(decimalMultiplier),
       );
@@ -111,6 +112,7 @@ describe("Staking", function () {
         90,
         TokenContract.address,
         20,
+        100,
         true,
         BigNumber.from(2000).mul(decimalMultiplier),
       );
@@ -234,7 +236,7 @@ describe("Staking", function () {
       const stakeInfo = await ownerStaking.getStakeInfo(0, userAddress);
       const pool = await ownerStaking.getDetailPool(0);
 
-      const reward = stakeInfo.amount.mul(pool.rewardPercent).div(365 * 100);
+      const reward = stakeInfo.amount.mul(pool.apr).mul(pool.duration).div(365).div(pool.denominatorAPR);
 
       expect(rewardClaimable.toHexString()).equal(reward.toHexString());
     });

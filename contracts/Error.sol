@@ -9,6 +9,7 @@ library Error {
     string public constant MIN_TOKEN_STAKE_MUST_GREATER_ZERO = "Error: Min token stake must be greater than 0";
     string public constant MAX_TOKEN_STAKE_MUST_GREATER_ZERO = "Error: Max token stake must be greater than 0";
     string public constant MAX_POOL_TOKEN_MUST_GREATER_ZERO = "Error: Max pool token must be greater than 0";
+    string public constant DENOMINATOR_APR_MUST_GREATER_ZERO = "Error: Denominator apr must be greater than 0";
     string public constant REWARD_PERCENT_MUST_IN_RANGE_BETWEEN_ONE_TO_HUNDRED =
         "Error: Reward percent must be in range [1, 100]";
 
