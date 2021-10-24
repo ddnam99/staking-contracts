@@ -181,9 +181,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     /**
         @dev if pool include white list and user stake amount qualified 
      */
-    function checkWhiteList(uint256 _poolId, address account) external view returns (bool) {
+    function checkWhiteList(uint256 _poolId, address _account) external view returns (bool) {
         StakingLib.Pool memory pool = _pools[_poolId];
-        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][account];
+        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_account];
 
         if (!pool.useWhitelist) return false;
         if (stakeInfo.withdrawTime != 0 && stakeInfo.stakeTime + pool.duration * 1 days > stakeInfo.withdrawTime)
