@@ -83,11 +83,12 @@ describe("Staking", function () {
       await ownerStaking.createPool(
         startTestTime + 5,
         TokenContract.address,
+        TokenContract.address,
         BigNumber.from(100).mul(decimalMultiplier),
         BigNumber.from(10000).mul(decimalMultiplier),
         BigNumber.from(1000000).mul(decimalMultiplier),
         90,
-        TokenContract.address,
+        1,
         20,
         100,
         true,
@@ -106,11 +107,12 @@ describe("Staking", function () {
       await ownerStaking.createPool(
         startTestTime + 5,
         TokenContract.address,
+        TokenContract.address,
         BigNumber.from(100).mul(decimalMultiplier),
         BigNumber.from(10000).mul(decimalMultiplier),
         BigNumber.from(1000000).mul(decimalMultiplier),
         90,
-        TokenContract.address,
+        1,
         20,
         100,
         true,
@@ -241,7 +243,23 @@ describe("Staking", function () {
       expect(rewardClaimable.toHexString()).equal(reward.toHexString());
     });
 
+    it("Should return error when withdraw in redemption period", async () => {
+      await ownerStaking.setBlockTimestamp(startTestTime + 91 * 24 * 60 * 60 + 100);
+
+      const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[1]);
+
+      try {
+        await user.withdraw(0);
+        expect(true).equal(false);
+      } catch (err) {
+        // @ts-ignore
+        expect(err.message.includes("Cannot withdraw in redemption period")).equal(true);
+      }
+    });
+
     it("Should balance of user is equal old balance + reward", async () => {
+      await ownerStaking.setBlockTimestamp(startTestTime + 100 * 24 * 60 * 60 + 100);
+
       const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[1]);
       const userAddress = await accounts[1].getAddress();
 

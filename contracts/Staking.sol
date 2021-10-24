@@ -18,9 +18,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     // poolId => account => stake info
     mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
     // amount token holders staked
-    mapping(IERC20 => uint256) private _stakedAmounts;
+    mapping(address => uint256) private _stakedAmounts;
     // amount rewards to paid holders
-    mapping(IERC20 => uint256) private _rewardAmounts;
+    mapping(address => uint256) private _rewardAmounts;
 
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), Error.ADMIN_ROLE_REQUIRED);
@@ -39,44 +39,49 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
     function createPool(
         uint256 _startTime,
-        IERC20 _token,
+        address _stakeAddress,
+        address _rewardAddress,
         uint256 _minTokenStake,
         uint256 _maxTokenStake,
-        uint256 _maxPoolToken,
+        uint256 _maxPoolStake,
         uint256 _duration,
-        IERC20 _rewardToken,
+        uint256 _redemptionPeriod,
         uint256 _apr,
         uint256 _denominatorAPR,
-        bool _isIncludeWL,
-        uint256 _conditionWL
+        bool _useWhitelist,
+        uint256 _minStakeWhitelist
     ) external nonReentrant onlyAdmin {
         require(_startTime >= block.timestamp, Error.START_TIME_MUST_IN_FUTURE_DATE);
         require(_duration != 0, Error.DURATION_MUST_NOT_EQUAL_ZERO);
         require(_minTokenStake > 0, Error.MIN_TOKEN_STAKE_MUST_GREATER_ZERO);
         require(_maxTokenStake > 0, Error.MAX_TOKEN_STAKE_MUST_GREATER_ZERO);
-        require(_maxPoolToken > 0, Error.MAX_POOL_TOKEN_MUST_GREATER_ZERO);
+        require(_maxPoolStake > 0, Error.MAX_POOL_STAKE_MUST_GREATER_ZERO);
         require(_denominatorAPR > 0, Error.DENOMINATOR_APR_MUST_GREATER_ZERO);
         require(_apr > 0 && _apr <= _denominatorAPR, Error.REWARD_PERCENT_MUST_IN_RANGE_BETWEEN_ONE_TO_HUNDRED);
 
-        uint256 totalReward = (_maxPoolToken * _duration * _apr) / (daysOfYear * _denominatorAPR);
+        uint256 totalReward = (_maxPoolStake * _duration * _apr) / (daysOfYear * _denominatorAPR);
 
-        require(_rewardToken.transferFrom(_msgSender(), address(this), totalReward), Error.TRANSFER_REWARD_FAILED);
+        require(
+            IERC20(_rewardAddress).transferFrom(_msgSender(), address(this), totalReward),
+            Error.TRANSFER_REWARD_FAILED
+        );
 
         StakingLib.Pool memory pool = StakingLib.Pool(
             _pools.length,
             _startTime,
             true,
-            _token,
+            _stakeAddress,
+            _rewardAddress,
             _minTokenStake,
             _maxTokenStake,
-            _maxPoolToken,
+            _maxPoolStake,
             0,
             _duration,
-            _rewardToken,
+            _redemptionPeriod,
             _apr,
             _denominatorAPR,
-            _isIncludeWL,
-            _conditionWL
+            _useWhitelist,
+            _minStakeWhitelist
         );
 
         _pools.push(pool);
@@ -99,11 +104,11 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     }
 
     /**
-        @dev count pools is active an staked amount less than max pool token
+        @dev count pools is active and staked amount less than max pool token
      */
     function _getCountActivePools() internal view returns (uint256 count) {
         for (uint256 i = 0; i < _pools.length; i++) {
-            if (_pools[i].isActive && _pools[i].tokenStaked < _pools[i].maxPoolToken) {
+            if (_pools[i].isActive && _pools[i].totalStaked < _pools[i].maxPoolStake) {
                 count++;
             }
         }
@@ -123,7 +128,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.Pool[] memory activePools = new StakingLib.Pool[](countActivePools);
 
         for (uint256 i = 0; i < _pools.length; i++) {
-            if (_pools[i].isActive && _pools[i].tokenStaked < _pools[i].maxPoolToken) {
+            if (_pools[i].isActive && _pools[i].totalStaked < _pools[i].maxPoolStake) {
                 activePools[count++] = _pools[i];
             }
         }
@@ -142,17 +147,20 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         require(_amount > 0, Error.AMOUNT_MUST_GREATER_ZERO);
         require(pool.startTime <= block.timestamp, Error.IT_NOT_TIME_STAKE_YET);
-        require(pool.isActive && pool.tokenStaked < pool.maxPoolToken, Error.POOL_CLOSED);
+        require(pool.isActive && pool.totalStaked < pool.maxPoolStake, Error.POOL_CLOSED);
         require(pool.minTokenStake <= _amount, Error.AMOUNT_MUST_GREATER_OR_EQUAL_MIN_TOKEN_STAKE);
         require(pool.maxTokenStake >= _amount, Error.AMOUNT_MUST_LESS_OR_EQUAL_MAX_TOKEN_STAKE);
-        require(pool.tokenStaked + _amount <= pool.maxPoolToken, Error.OVER_MAX_TOKEN_STAKE);
-        require(pool.token.transferFrom(_msgSender(), address(this), _amount), Error.TRANSFER_TOKEN_FAILED);
+        require(pool.totalStaked + _amount <= pool.maxPoolStake, Error.OVER_MAX_POOL_STAKE);
+        require(
+            IERC20(pool.stakeAddress).transferFrom(_msgSender(), address(this), _amount),
+            Error.TRANSFER_TOKEN_FAILED
+        );
 
-        uint256 reward = (_amount * pool.duration * pool.apr) / (daysOfYear  * pool.denominatorAPR);
+        uint256 reward = (_amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
 
         require(
-            pool.rewardToken.balanceOf(address(this)) >=
-                _stakedAmounts[pool.rewardToken] + _rewardAmounts[pool.rewardToken] + reward,
+            IERC20(pool.rewardAddress).balanceOf(address(this)) >=
+                _stakedAmounts[pool.rewardAddress] + _rewardAmounts[pool.rewardAddress] + reward,
             Error.CONTRACT_NOT_ENOUGH_REWARD
         );
 
@@ -161,11 +169,11 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, valueDate, _amount, 0);
 
-        _pools[_poolId].tokenStaked += _amount;
+        _pools[_poolId].totalStaked += _amount;
         _stakeInfoList[_poolId][_msgSender()] = stakeInfo;
 
-        _stakedAmounts[pool.token] += _amount;
-        _rewardAmounts[pool.rewardToken] += reward;
+        _stakedAmounts[pool.stakeAddress] += _amount;
+        _rewardAmounts[pool.rewardAddress] += reward;
 
         emit Staked(_msgSender(), _poolId, _amount);
     }
@@ -177,10 +185,10 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         StakingLib.Pool memory pool = _pools[_poolId];
         StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][account];
 
-        if (!pool.isIncludeWL) return false;
+        if (!pool.useWhitelist) return false;
         if (stakeInfo.withdrawTime != 0 && stakeInfo.stakeTime + pool.duration * 1 days > stakeInfo.withdrawTime)
             return false;
-        if (pool.conditionWL > stakeInfo.amount) return false;
+        if (pool.minStakeWhitelist > stakeInfo.amount) return false;
 
         return true;
     }
@@ -219,21 +227,28 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, Error.NOTHING_TO_WITHDRAW);
 
+        uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
+
+        require(
+            block.timestamp < interestEndDate || interestEndDate + pool.redemptionPeriod * 1 days <= block.timestamp,
+            Error.CANNOT_WITHDRAW_IN_REDEMPTION_PERIOD
+        );
+
         uint256 reward = 0;
         uint256 rewardFullDuration = (stakeInfo.amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
         if (stakeInfo.valueDate + pool.duration * 1 days <= block.timestamp) {
             reward = rewardFullDuration;
         }
 
-        require(pool.token.balanceOf(address(this)) >= stakeInfo.amount, Error.NOT_ENOUGH_TOKEN);
-        require(pool.rewardToken.balanceOf(address(this)) >= reward, Error.NOT_ENOUGH_REWARD);
+        require(IERC20(pool.stakeAddress).balanceOf(address(this)) >= stakeInfo.amount, Error.NOT_ENOUGH_TOKEN);
+        require(IERC20(pool.rewardAddress).balanceOf(address(this)) >= reward, Error.NOT_ENOUGH_REWARD);
 
-        require(pool.rewardToken.transfer(_msgSender(), reward), Error.TRANSFER_REWARD_FAILED);
-        require(pool.token.transfer(_msgSender(), stakeInfo.amount), Error.TRANSFER_TOKEN_FAILED);
+        require(IERC20(pool.rewardAddress).transfer(_msgSender(), reward), Error.TRANSFER_REWARD_FAILED);
+        require(IERC20(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount), Error.TRANSFER_TOKEN_FAILED);
 
         _stakeInfoList[_poolId][_msgSender()].withdrawTime = block.timestamp;
-        _stakedAmounts[pool.token] -= stakeInfo.amount;
-        _rewardAmounts[pool.rewardToken] -= rewardFullDuration;
+        _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
+        _rewardAmounts[pool.rewardAddress] -= rewardFullDuration;
 
         emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, reward);
     }
@@ -241,28 +256,29 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     /**
         @dev all token in all pools holders staked
      */
-    function getStakedAmount(IERC20 _token) external view returns (uint256) {
-        return _stakedAmounts[_token];
+    function getStakedAmount(address _tokenAddress) external view returns (uint256) {
+        return _stakedAmounts[_tokenAddress];
     }
 
     /**
         @dev all rewards in all pools to paid holders
      */
-    function getRewardAmount(IERC20 _token) external view returns (uint256) {
-        return _rewardAmounts[_token];
+    function getRewardAmount(address _tokenAddress) external view returns (uint256) {
+        return _rewardAmounts[_tokenAddress];
     }
 
     /** 
         @dev admin withdraws excess token
      */
-    function withdrawERC20(IERC20 _token, uint256 _amount) external nonReentrant onlyAdmin {
+    function withdrawERC20(address _tokenAddress, uint256 _amount) external nonReentrant onlyAdmin {
         require(_amount != 0, Error.AMOUNT_MUST_GREATER_ZERO);
 
         require(
-            _token.balanceOf(address(this)) >= _stakedAmounts[_token] + _rewardAmounts[_token] + _amount,
+            IERC20(_tokenAddress).balanceOf(address(this)) >=
+                _stakedAmounts[_tokenAddress] + _rewardAmounts[_tokenAddress] + _amount,
             Error.NOT_ENOUGH_TOKEN
         );
 
-        require(_token.transfer(_msgSender(), _amount), Error.TRANSFER_TOKEN_FAILED);
+        require(IERC20(_tokenAddress).transfer(_msgSender(), _amount), Error.TRANSFER_TOKEN_FAILED);
     }
 }

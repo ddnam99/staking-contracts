@@ -11,17 +11,18 @@ library StakingLib {
         uint256 id;
         uint256 startTime;
         bool isActive;
-        IERC20 token; // token stake
+        address stakeAddress;
+        address rewardAddress;
         uint256 minTokenStake; // minimum token user can stake
         uint256 maxTokenStake; // maximum total user can stake
-        uint256 maxPoolToken; // maximum total token all user can stake
-        uint256 tokenStaked;
+        uint256 maxPoolStake; // maximum total token all user can stake
+        uint256 totalStaked;
         uint256 duration; // days
-        IERC20 rewardToken;
+        uint256 redemptionPeriod; // days
         uint256 apr;
         uint256 denominatorAPR;
-        bool isIncludeWL;
-        uint256 conditionWL; // min token stake to white list
+        bool useWhitelist;
+        uint256 minStakeWhitelist; // min token stake to white list
     }
 
     /**
