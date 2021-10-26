@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.2;
+pragma solidity >=0.8.2;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -11,16 +11,20 @@ import "./StakingLib.sol";
 import "./Error.sol";
 
 contract Staking is Context, ReentrancyGuard, AccessControl {
-    StakingLib.Pool[] private _pools;
+    using StakingLib for StakeInfo[];
+
+    StakePool[] private _pools;
 
     uint256 public daysOfYear = 365;
 
     // poolId => account => stake info
-    mapping(uint256 => mapping(address => StakingLib.StakeInfo)) private _stakeInfoList;
+    mapping(uint256 => mapping(address => StakeInfo)) private _stakeInfoList;
     // amount token holders staked
     mapping(address => uint256) private _stakedAmounts;
     // amount rewards to paid holders
     mapping(address => uint256) private _rewardAmounts;
+    // history stake by user
+    mapping(address => StakeInfo[]) private _stakeHistories;
 
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), Error.ADMIN_ROLE_REQUIRED);
@@ -66,7 +70,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
             Error.TRANSFER_REWARD_FAILED
         );
 
-        StakingLib.Pool memory pool = StakingLib.Pool(
+        StakePool memory pool = StakePool(
             _pools.length,
             _startTime,
             true,
@@ -95,11 +99,11 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         emit ClosePool(_poolId);
     }
 
-    function getDetailPool(uint256 _poolId) external view returns (StakingLib.Pool memory) {
+    function getDetailPool(uint256 _poolId) external view returns (StakePool memory) {
         return _pools[_poolId];
     }
 
-    function getAllPools() external view returns (StakingLib.Pool[] memory) {
+    function getAllPools() external view returns (StakePool[] memory) {
         return _pools;
     }
 
@@ -121,11 +125,11 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     /**
         @dev list pools is active an staked amount less than max pool token
      */
-    function getActivePools() external view returns (StakingLib.Pool[] memory) {
+    function getActivePools() external view returns (StakePool[] memory) {
         uint256 countActivePools = _getCountActivePools();
         uint256 count = 0;
 
-        StakingLib.Pool[] memory activePools = new StakingLib.Pool[](countActivePools);
+        StakePool[] memory activePools = new StakePool[](countActivePools);
 
         for (uint256 i = 0; i < _pools.length; i++) {
             if (_pools[i].isActive && _pools[i].totalStaked < _pools[i].maxPoolStake) {
@@ -140,8 +144,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         @dev value date start 07:00 UTC next day
      */
     function stake(uint256 _poolId, uint256 _amount) external nonReentrant {
-        StakingLib.Pool memory pool = _pools[_poolId];
-        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
+        StakePool memory pool = _pools[_poolId];
+        StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
 
         require(stakeInfo.amount == 0 || stakeInfo.withdrawTime > 0, Error.DUPLICATE_STAKE);
 
@@ -167,10 +171,11 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         // 07:00 UTC next day
         uint256 valueDate = (block.timestamp / 1 days) * 1 days + 1 days + 7 hours;
 
-        stakeInfo = StakingLib.StakeInfo(_poolId, block.timestamp, valueDate, _amount, 0);
+        stakeInfo = StakeInfo(_poolId, block.timestamp, valueDate, _amount, 0);
 
         _pools[_poolId].totalStaked += _amount;
         _stakeInfoList[_poolId][_msgSender()] = stakeInfo;
+        _stakeHistories[_msgSender()].push(stakeInfo);
 
         _stakedAmounts[pool.stakeAddress] += _amount;
         _rewardAmounts[pool.rewardAddress] += reward;
@@ -181,9 +186,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     /**
         @dev if pool include white list and user stake amount qualified 
      */
-    function checkWhiteList(uint256 _poolId, address _account) external view returns (bool) {
-        StakingLib.Pool memory pool = _pools[_poolId];
-        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_account];
+    function checkWhiteList(uint256 _poolId, address _user) external view returns (bool) {
+        StakePool memory pool = _pools[_poolId];
+        StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
 
         if (!pool.useWhitelist) return false;
         if (stakeInfo.withdrawTime != 0 && stakeInfo.stakeTime + pool.duration * 1 days > stakeInfo.withdrawTime)
@@ -196,13 +201,17 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     /**
         @dev stake info in pool by user
      */
-    function getStakeInfo(uint256 _poolId, address _user) external view returns (StakingLib.StakeInfo memory) {
+    function getStakeInfo(uint256 _poolId, address _user) external view returns (StakeInfo memory) {
         return _stakeInfoList[_poolId][_user];
     }
 
+    function getStakeHistories(address _user) external view returns (StakeInfo[] memory) {
+        return _stakeHistories[_user];
+    }
+
     function _getRewardClaimable(uint256 _poolId, address _user) internal view returns (uint256 rewardClaimable) {
-        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
-        StakingLib.Pool memory pool = _pools[_poolId];
+        StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
+        StakePool memory pool = _pools[_poolId];
 
         if (stakeInfo.amount == 0 || stakeInfo.withdrawTime != 0) return 0;
         if (stakeInfo.valueDate > block.timestamp) return 0;
@@ -222,8 +231,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         @dev user withdraw token & reward (reward is 0 when withdraw before duration)
      */
     function withdraw(uint256 _poolId) external nonReentrant {
-        StakingLib.StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
-        StakingLib.Pool memory pool = _pools[_poolId];
+        StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
+        StakePool memory pool = _pools[_poolId];
 
         require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, Error.NOTHING_TO_WITHDRAW);
 
@@ -249,6 +258,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         _stakeInfoList[_poolId][_msgSender()].withdrawTime = block.timestamp;
         _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
         _rewardAmounts[pool.rewardAddress] -= rewardFullDuration;
+
+        _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, block.timestamp);
 
         emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, reward);
     }
