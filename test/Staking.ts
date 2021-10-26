@@ -244,7 +244,7 @@ describe("Staking", function () {
     });
 
     it("Should return error when withdraw in redemption period", async () => {
-      await ownerStaking.setBlockTimestamp(startTestTime + 92 * 24 * 60 * 60 + 100);
+      await ownerStaking.setBlockTimestamp(startTestTime + 91 * 24 * 60 * 60 + 8 * 60 * 60);
 
       const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[1]);
 

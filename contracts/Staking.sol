@@ -11,6 +11,7 @@ import "./StakingLib.sol";
 import "./Error.sol";
 
 contract Staking is Context, ReentrancyGuard, AccessControl {
+    using StakingLib for StakePool[];
     using StakingLib for StakeInfo[];
 
     StakePool[] private _pools;
@@ -107,37 +108,15 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return _pools;
     }
 
-    /**
-        @dev count pools is active and staked amount less than max pool token
-     */
-    function _getCountActivePools() internal view returns (uint256 count) {
-        for (uint256 i = 0; i < _pools.length; i++) {
-            if (_pools[i].isActive && _pools[i].totalStaked < _pools[i].maxPoolStake) {
-                count++;
-            }
-        }
-    }
-
     function getCountActivePools() external view returns (uint256) {
-        return _getCountActivePools();
+        return _pools.countActivePools();
     }
 
     /**
         @dev list pools is active an staked amount less than max pool token
      */
     function getActivePools() external view returns (StakePool[] memory) {
-        uint256 countActivePools = _getCountActivePools();
-        uint256 count = 0;
-
-        StakePool[] memory activePools = new StakePool[](countActivePools);
-
-        for (uint256 i = 0; i < _pools.length; i++) {
-            if (_pools[i].isActive && _pools[i].totalStaked < _pools[i].maxPoolStake) {
-                activePools[count++] = _pools[i];
-            }
-        }
-
-        return activePools;
+        return _pools.getActivePools();
     }
 
     /** 
@@ -209,6 +188,32 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return _stakeHistories[_user];
     }
 
+    function getStakeAvailableList(address _user) external view returns (RewardInfo[] memory stakeAvailableList) {
+        stakeAvailableList = new RewardInfo[](_stakeHistories[_user].countStakeAvailable());
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < _stakeHistories[_user].length; i++) {
+            if (_stakeHistories[_user][i].withdrawTime == 0) {
+                StakeInfo memory stakeInfo = _stakeHistories[_user][i];
+                StakePool memory pool = _pools[stakeInfo.poolId];
+
+                uint256 rewardAmount = _getRewardClaimable(pool.id, _user);
+
+                uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
+                bool canClaim = interestEndDate + pool.redemptionPeriod * 1 days <= block.timestamp;
+
+                stakeAvailableList[count++] = RewardInfo(
+                    pool.id,
+                    pool.stakeAddress,
+                    pool.rewardAddress,
+                    stakeInfo.amount,
+                    rewardAmount,
+                    canClaim
+                );
+            }
+        }
+    }
+
     function _getRewardClaimable(uint256 _poolId, address _user) internal view returns (uint256 rewardClaimable) {
         StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
         StakePool memory pool = _pools[_poolId];
@@ -255,11 +260,11 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         require(IERC20(pool.rewardAddress).transfer(_msgSender(), reward), Error.TRANSFER_REWARD_FAILED);
         require(IERC20(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount), Error.TRANSFER_TOKEN_FAILED);
 
-        _stakeInfoList[_poolId][_msgSender()].withdrawTime = block.timestamp;
         _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
         _rewardAmounts[pool.rewardAddress] -= rewardFullDuration;
 
         _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, block.timestamp);
+        delete _stakeInfoList[_poolId][_msgSender()];
 
         emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, reward);
     }

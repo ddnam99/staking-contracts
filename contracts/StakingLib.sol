@@ -33,6 +33,15 @@ struct StakeInfo {
     uint256 withdrawTime;
 }
 
+struct RewardInfo {
+    uint256 poolId;
+    address stakeAddress;
+    address rewardAddress;
+    uint256 amount;
+    uint256 rewardAmount;
+    bool canClaim;
+}
+
 library StakingLib {
     function updateWithdrawTimeLastStake(
         StakeInfo[] storage self,
@@ -47,5 +56,34 @@ library StakingLib {
         }
 
         return false;
+    }
+
+    /**
+        @dev count pools is active and staked amount less than max pool token
+     */
+    function countActivePools(StakePool[] storage self) internal view returns (uint256 count) {
+        for (uint256 i = 0; i < self.length; i++) {
+            if (self[i].isActive && self[i].totalStaked < self[i].maxPoolStake) {
+                count++;
+            }
+        }
+    }
+
+    function getActivePools(StakePool[] storage self) internal view returns (StakePool[] memory activePools) {
+        activePools = new StakePool[](countActivePools(self));
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < self.length; i++) {
+            if (self[i].isActive && self[i].totalStaked < self[i].maxPoolStake) {
+                activePools[count++] = self[i];
+            }
+        }
+    }
+
+    function countStakeAvailable(StakeInfo[] storage self) internal view returns (uint256 count) {
+        count = 0;
+        for (uint256 i = 0; i < self.length; i++) {
+            if (self[i].withdrawTime == 0) count++;
+        }
     }
 }
