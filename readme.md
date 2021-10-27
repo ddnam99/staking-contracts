@@ -4,7 +4,7 @@ This contract locks ERC-20 tokens and issues back staked tokens. These staked to
 User locks tokens on `startTime` moment.
 ## Features
  - **stake** - create new `Stake`. Initial bias of the `Stake` depends on locked token amount and other parameters of the `Stake`
- - **withdraw** - withdraw unlocked tokens (if something is unlocked already)
+ - **withdraw** - withdraw tokens. Cannot withdraw if stake in duration redemptionPeriod.
 
 ## Functions to read the data
  - **getAllPools**() - get all pools
@@ -17,7 +17,7 @@ User locks tokens on `startTime` moment.
  - **getRewardClaimable**(uint poolId, address user) - get  reward claimable of user in pool
  - **getStakedAmount**() - get all token in all pools holders staked
  - **getRewardAmount**() - get all rewards in all pools to paid holders
-
+ - **checkWhiteList**() - if pool include white list and user stake amount qualified
 ## Functions for owner only
  - **createPool**() - create pool
  - **closePool**() - close pool
@@ -32,7 +32,7 @@ balance will be almost the same as the function of locked tokens (it will be onl
 
 ##### Contract events
 Staking contract emits these events:
-- Stake - when stake is created
-- Withdraw - when user withdraws tokens
-- CreatePool - when admin created pool
+- Staked - when stake is created
+- Withdrawn - when user withdraws tokens
+- NewPool - when admin created pool
 - ClosePool - when admin close pool
