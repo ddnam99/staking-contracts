@@ -38,8 +38,13 @@ struct RewardInfo {
     address stakeAddress;
     address rewardAddress;
     uint256 amount;
-    uint256 rewardAmount;
+    uint256 claimableReward;
     bool canClaim;
+}
+
+struct LockedInfo {
+    address tokenAddress;
+    uint256 amount;
 }
 
 library StakingLib {

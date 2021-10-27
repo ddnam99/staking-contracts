@@ -26,9 +26,8 @@ library Error {
         "Error: Amount must be less or equal max token stake";
     string public constant OVER_MAX_POOL_STAKE = "Error: Over max pool stake";
 
-    string public constant CONTRACT_NOT_ENOUGH_REWARD = "Error: Contract not enough reward";
     string public constant NOTHING_TO_WITHDRAW = "Error: Nothing to withdraw";
     string public constant NOT_ENOUGH_TOKEN = "Error: Not enough token";
-    string public constant NOT_ENOUGH_REWARD = "Error: Not enough reward";
-    string public constant CANNOT_WITHDRAW_IN_REDEMPTION_PERIOD = "Error: Cannot withdraw in redemption period";
+    string public constant CANNOT_UN_STAKE_WHEN_OVER_DURATION = "Error: Cannot un stake when over duration";
+    string public constant CANNOT_WITHDRAW_BEFORE_REDEMPTION_PERIOD = "Error: Cannot withdraw before redemption period";
 }

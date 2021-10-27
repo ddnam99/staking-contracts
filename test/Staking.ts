@@ -195,11 +195,11 @@ describe("Staking", function () {
       expect(isWL).equal(false);
     });
 
-    it("Should not in WL after withdraw before pool duration", async () => {
+    it("Should not in WL after un stake", async () => {
       const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[4]);
       const userAddress = await accounts[4].getAddress();
 
-      user.withdraw(0);
+      user.unStake(0);
       const isWL = await ownerStaking.checkWhiteList(0, userAddress);
 
       expect(isWL).equal(false);
@@ -215,19 +215,17 @@ describe("Staking", function () {
       expect(rewardClaimable.toHexString()).equal(BigNumber.from(0).toHexString());
     });
 
-    it("Should return 0 reward when not over pool duration", async () => {
+    it("Should return error when withdraw not over pool duration", async () => {
       await ownerStaking.setBlockTimestamp(startTestTime + 10 * 24 * 60 * 60 + 100);
       const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[3]);
-      const userAddress = await accounts[3].getAddress();
 
-      const stakeInfo = await ownerStaking.getStakeInfo(0, userAddress);
-      const oldBalanceOfUser: BigNumber = await ownerToken.balanceOf(userAddress);
-
-      await user.withdraw(0);
-
-      const currentBalanceOfUser: BigNumber = await ownerToken.balanceOf(userAddress);
-
-      expect(currentBalanceOfUser.toHexString()).equal(oldBalanceOfUser.add(stakeInfo.amount).toHexString());
+      try {
+        await user.withdraw(0);
+        expect(true).equal(false);
+      } catch (err) {
+        // @ts-ignore
+        expect(err.message.includes("Cannot withdraw before redemption period")).equal(true);
+      }
     });
 
     it("Should return all reward when pool over duration", async () => {
@@ -253,7 +251,7 @@ describe("Staking", function () {
         expect(true).equal(false);
       } catch (err) {
         // @ts-ignore
-        expect(err.message.includes("Cannot withdraw in redemption period")).equal(true);
+        expect(err.message.includes("Cannot withdraw before redemption period")).equal(true);
       }
     });
 

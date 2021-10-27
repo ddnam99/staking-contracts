@@ -8,11 +8,13 @@ import "@openzeppelin/contracts/utils/Context.sol";
 import "hardhat/console.sol";
 
 import "./StakingLib.sol";
+import "./AddressesLib.sol";
 import "./Error.sol";
 
 contract Staking is Context, ReentrancyGuard, AccessControl {
     using StakingLib for StakePool[];
     using StakingLib for StakeInfo[];
+    using AddressesLib for address[];
 
     StakePool[] private _pools;
 
@@ -27,6 +29,9 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     // history stake by user
     mapping(address => StakeInfo[]) private _stakeHistories;
 
+    address[] private _lockedAddresses;
+    mapping(address => uint256) private _lockedAmounts;
+
     modifier onlyAdmin() {
         require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), Error.ADMIN_ROLE_REQUIRED);
         _;
@@ -35,6 +40,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     event NewPool(uint256 poolId);
     event ClosePool(uint256 poolId);
     event Staked(address user, uint256 poolId, uint256 amount);
+    event UnStaked(address user, uint256 poolId);
     event Withdrawn(address user, uint256 poolId, uint256 amount, uint256 reward);
 
     constructor(address _multiSigAccount) {
@@ -91,6 +97,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         _pools.push(pool);
 
+        _lockedAddresses.add(_stakeAddress);
+
         emit NewPool(_pools.length - 1);
     }
 
@@ -134,18 +142,13 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         require(pool.minTokenStake <= _amount, Error.AMOUNT_MUST_GREATER_OR_EQUAL_MIN_TOKEN_STAKE);
         require(pool.maxTokenStake >= _amount, Error.AMOUNT_MUST_LESS_OR_EQUAL_MAX_TOKEN_STAKE);
         require(pool.totalStaked + _amount <= pool.maxPoolStake, Error.OVER_MAX_POOL_STAKE);
+
         require(
             IERC20(pool.stakeAddress).transferFrom(_msgSender(), address(this), _amount),
             Error.TRANSFER_TOKEN_FAILED
         );
 
         uint256 reward = (_amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
-
-        require(
-            IERC20(pool.rewardAddress).balanceOf(address(this)) >=
-                _stakedAmounts[pool.rewardAddress] + _rewardAmounts[pool.rewardAddress] + reward,
-            Error.CONTRACT_NOT_ENOUGH_REWARD
-        );
 
         // 07:00 UTC next day
         uint256 valueDate = (block.timestamp / 1 days) * 1 days + 1 days + 7 hours;
@@ -158,6 +161,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
 
         _stakedAmounts[pool.stakeAddress] += _amount;
         _rewardAmounts[pool.rewardAddress] += reward;
+
+        _lockedAmounts[pool.stakeAddress] += _amount;
 
         emit Staked(_msgSender(), _poolId, _amount);
     }
@@ -188,8 +193,8 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         return _stakeHistories[_user];
     }
 
-    function getStakeAvailableList(address _user) external view returns (RewardInfo[] memory stakeAvailableList) {
-        stakeAvailableList = new RewardInfo[](_stakeHistories[_user].countStakeAvailable());
+    function getStakeClaims(address _user) external view returns (RewardInfo[] memory stakeClaims) {
+        stakeClaims = new RewardInfo[](_stakeHistories[_user].countStakeAvailable());
         uint256 count = 0;
 
         for (uint256 i = 0; i < _stakeHistories[_user].length; i++) {
@@ -202,7 +207,7 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
                 uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
                 bool canClaim = interestEndDate + pool.redemptionPeriod * 1 days <= block.timestamp;
 
-                stakeAvailableList[count++] = RewardInfo(
+                stakeClaims[count++] = RewardInfo(
                     pool.id,
                     pool.stakeAddress,
                     pool.rewardAddress,
@@ -221,11 +226,11 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
         if (stakeInfo.amount == 0 || stakeInfo.withdrawTime != 0) return 0;
         if (stakeInfo.valueDate > block.timestamp) return 0;
 
-        uint256 stakeDays = (block.timestamp - stakeInfo.valueDate) / 1 days;
+        uint256 lockedDays = (block.timestamp - stakeInfo.valueDate) / 1 days;
 
-        if (stakeDays > pool.duration) stakeDays = pool.duration;
+        if (lockedDays > pool.duration) lockedDays = pool.duration;
 
-        rewardClaimable = (stakeInfo.amount * stakeDays * pool.apr) / (daysOfYear * pool.denominatorAPR);
+        rewardClaimable = (stakeInfo.amount * lockedDays * pool.apr) / (daysOfYear * pool.denominatorAPR);
     }
 
     function getRewardClaimable(uint256 _poolId, address _user) external view returns (uint256) {
@@ -233,35 +238,61 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
     }
 
     /** 
-        @dev user withdraw token & reward (reward is 0 when withdraw before duration)
+        @dev user withdraw token staked without reward
+     */
+    function unStake(uint256 _poolId) external nonReentrant {
+        StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
+        StakePool memory pool = _pools[_poolId];
+
+        require(stakeInfo.amount > 0, Error.NOTHING_TO_WITHDRAW);
+
+        uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
+
+        require(block.timestamp < interestEndDate, Error.CANNOT_UN_STAKE_WHEN_OVER_DURATION);
+
+        uint256 rewardFullDuration = (stakeInfo.amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
+
+        require(IERC20(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount), Error.TRANSFER_TOKEN_FAILED);
+
+        _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
+        _rewardAmounts[pool.rewardAddress] -= rewardFullDuration;
+
+        _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, block.timestamp);
+        delete _stakeInfoList[_poolId][_msgSender()];
+
+        emit UnStaked(_msgSender(), _poolId);
+    }
+
+    /** 
+        @dev user withdraw token & reward
      */
     function withdraw(uint256 _poolId) external nonReentrant {
         StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
         StakePool memory pool = _pools[_poolId];
 
-        require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, Error.NOTHING_TO_WITHDRAW);
+        require(stakeInfo.amount > 0, Error.NOTHING_TO_WITHDRAW);
 
         uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
 
         require(
-            block.timestamp < interestEndDate || interestEndDate + pool.redemptionPeriod * 1 days <= block.timestamp,
-            Error.CANNOT_WITHDRAW_IN_REDEMPTION_PERIOD
+            interestEndDate + pool.redemptionPeriod * 1 days <= block.timestamp,
+            Error.CANNOT_WITHDRAW_BEFORE_REDEMPTION_PERIOD
         );
 
-        uint256 reward = 0;
-        uint256 rewardFullDuration = (stakeInfo.amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
-        if (stakeInfo.valueDate + pool.duration * 1 days <= block.timestamp) {
-            reward = rewardFullDuration;
+        uint256 reward = _getRewardClaimable(_poolId, _msgSender());
+
+        if (pool.stakeAddress == pool.rewardAddress) {
+            require(
+                IERC20(pool.rewardAddress).transfer(_msgSender(), stakeInfo.amount + reward),
+                Error.TRANSFER_REWARD_FAILED
+            );
+        } else {
+            require(IERC20(pool.rewardAddress).transfer(_msgSender(), reward), Error.TRANSFER_REWARD_FAILED);
+            require(IERC20(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount), Error.TRANSFER_TOKEN_FAILED);
         }
 
-        require(IERC20(pool.stakeAddress).balanceOf(address(this)) >= stakeInfo.amount, Error.NOT_ENOUGH_TOKEN);
-        require(IERC20(pool.rewardAddress).balanceOf(address(this)) >= reward, Error.NOT_ENOUGH_REWARD);
-
-        require(IERC20(pool.rewardAddress).transfer(_msgSender(), reward), Error.TRANSFER_REWARD_FAILED);
-        require(IERC20(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount), Error.TRANSFER_TOKEN_FAILED);
-
         _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
-        _rewardAmounts[pool.rewardAddress] -= rewardFullDuration;
+        _rewardAmounts[pool.rewardAddress] -= reward;
 
         _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, block.timestamp);
         delete _stakeInfoList[_poolId][_msgSender()];
@@ -281,6 +312,13 @@ contract Staking is Context, ReentrancyGuard, AccessControl {
      */
     function getRewardAmount(address _tokenAddress) external view returns (uint256) {
         return _rewardAmounts[_tokenAddress];
+    }
+
+    function getTotalLocked() external view returns (LockedInfo[] memory lockedInfoList) {
+        lockedInfoList = new LockedInfo[](_lockedAddresses.length);
+        for (uint256 i = 0; i < _lockedAddresses.length; i++) {
+            lockedInfoList[i] = LockedInfo(_lockedAddresses[i], _lockedAmounts[_lockedAddresses[i]]);
+        }
     }
 
     /** 
