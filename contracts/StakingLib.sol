@@ -47,7 +47,66 @@ struct LockedInfo {
     uint256 amount;
 }
 
+struct TopStakeInfo {
+    address user;
+    uint256 amount;
+}
+
 library StakingLib {
+    function add(
+        TopStakeInfo[] storage self,
+        address user,
+        uint256 amount
+    ) internal {
+        for (uint256 i = 0; i < self.length; i++) {
+            if (self[i].user == user) {
+                self[i].amount += amount;
+                quickSort(self, 0, self.length - 1);
+                return;
+            }
+        }
+
+        self.push(TopStakeInfo(user, amount));
+        quickSort(self, 0, self.length - 1);
+    }
+
+    function sub(
+        TopStakeInfo[] storage self,
+        address user,
+        uint256 amount
+    ) internal {
+        for (uint256 i = 0; i < self.length; i++) {
+            if (self[i].user == user) {
+                self[i].amount -= amount;
+                break;
+            }
+        }
+
+        quickSort(self, 0, self.length - 1);
+    }
+
+    function quickSort(
+        TopStakeInfo[] memory self,
+        uint256 left,
+        uint256 right
+    ) internal {
+        uint256 i = left;
+        uint256 j = right;
+        if (i == j) return;
+        uint256 pivot = self[uint256(left + (right - left) / 2)].amount;
+        while (i <= j) {
+            while (self[uint256(i)].amount < pivot) i++;
+            while (pivot < self[uint256(j)].amount) j--;
+            if (i <= j) {
+                (self[uint256(i)], self[uint256(j)]) = (self[uint256(j)], self[uint256(i)]);
+                i++;
+                j--;
+            }
+        }
+        if (left < j) quickSort(self, left, j);
+        if (i < right) quickSort(self, i, right);
+    }
+
     function updateWithdrawTimeLastStake(
         StakeInfo[] storage self,
         uint256 poolId,

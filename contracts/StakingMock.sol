@@ -15,6 +15,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     using StakingLib for StakePool[];
     using StakingLib for StakeInfo[];
     using AddressesLib for address[];
+    using StakingLib for TopStakeInfo[];
 
     uint256 public blockTimestamp;
 
@@ -30,6 +31,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     mapping(address => uint256) private _rewardAmounts;
     // history stake by user
     mapping(address => StakeInfo[]) private _stakeHistories;
+    // poolId => TopStakeInfo
+    mapping(uint256 => TopStakeInfo[]) private _topStakeInfoList;
 
     address[] private _lockedAddresses;
     mapping(address => uint256) private _lockedAmounts;
@@ -166,6 +169,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
 
         _lockedAmounts[pool.stakeAddress] += _amount;
 
+        _topStakeInfoList[_poolId].add(_msgSender(), _amount);
+
         emit Staked(_msgSender(), _poolId, _amount);
     }
 
@@ -259,6 +264,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
         _rewardAmounts[pool.rewardAddress] -= rewardFullDuration;
 
+        _topStakeInfoList[_poolId].sub(_msgSender(), stakeInfo.amount);
+
         _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, blockTimestamp);
         delete _stakeInfoList[_poolId][_msgSender()];
 
@@ -321,6 +328,10 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         for (uint256 i = 0; i < _lockedAddresses.length; i++) {
             lockedInfoList[i] = LockedInfo(_lockedAddresses[i], _lockedAmounts[_lockedAddresses[i]]);
         }
+    }
+
+    function getTopStakeInfoList(uint256 _poolId) external view returns (TopStakeInfo[] memory) {
+        return _topStakeInfoList[_poolId];
     }
 
     /** 
