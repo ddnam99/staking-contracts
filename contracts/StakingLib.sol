@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.2;
 
+import "hardhat/console.sol";
+
 /**
     @dev represents one pool
     */
@@ -61,13 +63,13 @@ library StakingLib {
         for (uint256 i = 0; i < self.length; i++) {
             if (self[i].user == user) {
                 self[i].amount += amount;
-                quickSort(self, 0, self.length - 1);
+                quickSort(self, 0, int256(self.length - 1));
                 return;
             }
         }
 
         self.push(TopStakeInfo(user, amount));
-        quickSort(self, 0, self.length - 1);
+        quickSort(self, 0, int256(self.length - 1));
     }
 
     function sub(
@@ -82,16 +84,16 @@ library StakingLib {
             }
         }
 
-        quickSort(self, 0, self.length - 1);
+        quickSort(self, 0, int256(self.length - 1));
     }
 
     function quickSort(
         TopStakeInfo[] memory self,
-        uint256 left,
-        uint256 right
+        int256 left,
+        int256 right
     ) internal {
-        uint256 i = left;
-        uint256 j = right;
+        int256 i = left;
+        int256 j = right;
         if (i == j) return;
         uint256 pivot = self[uint256(left + (right - left) / 2)].amount;
         while (i <= j) {

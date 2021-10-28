@@ -11,11 +11,13 @@ import "./StakingLib.sol";
 import "./AddressesLib.sol";
 import "./Error.sol";
 
-contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessControlUpgradeable {
+contract StakingProxyMock is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     using StakingLib for StakePool[];
     using StakingLib for StakeInfo[];
     using AddressesLib for address[];
     using StakingLib for TopStakeInfo[];
+
+    uint256 public blockTimestamp;
 
     StakePool[] private _pools;
 
@@ -50,6 +52,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         renounceRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(DEFAULT_ADMIN_ROLE, _multiSigAccount);
         daysOfYear = 365;
+        blockTimestamp = block.timestamp;
     }
 
     function createPool(
@@ -66,7 +69,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         bool _useWhitelist,
         uint256 _minStakeWhitelist
     ) external nonReentrant onlyAdmin {
-        require(_startTime >= block.timestamp, Error.START_TIME_MUST_IN_FUTURE_DATE);
+        require(_startTime >= blockTimestamp, Error.START_TIME_MUST_IN_FUTURE_DATE);
         require(_duration != 0, Error.DURATION_MUST_NOT_EQUAL_ZERO);
         require(_minTokenStake > 0, Error.MIN_TOKEN_STAKE_MUST_GREATER_ZERO);
         require(_maxTokenStake > 0, Error.MAX_TOKEN_STAKE_MUST_GREATER_ZERO);
@@ -141,7 +144,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         require(stakeInfo.amount == 0 || stakeInfo.withdrawTime > 0, Error.DUPLICATE_STAKE);
 
         require(_amount > 0, Error.AMOUNT_MUST_GREATER_ZERO);
-        require(pool.startTime <= block.timestamp, Error.IT_NOT_TIME_STAKE_YET);
+        require(pool.startTime <= blockTimestamp, Error.IT_NOT_TIME_STAKE_YET);
         require(pool.isActive && pool.totalStaked < pool.maxPoolStake, Error.POOL_CLOSED);
         require(pool.minTokenStake <= _amount, Error.AMOUNT_MUST_GREATER_OR_EQUAL_MIN_TOKEN_STAKE);
         require(pool.maxTokenStake >= _amount, Error.AMOUNT_MUST_LESS_OR_EQUAL_MAX_TOKEN_STAKE);
@@ -155,9 +158,9 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         uint256 reward = (_amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
 
         // 07:00 UTC next day
-        uint256 valueDate = (block.timestamp / 1 days) * 1 days + 1 days + 7 hours;
+        uint256 valueDate = (blockTimestamp / 1 days) * 1 days + 1 days + 7 hours;
 
-        stakeInfo = StakeInfo(_poolId, block.timestamp, valueDate, _amount, 0);
+        stakeInfo = StakeInfo(_poolId, blockTimestamp, valueDate, _amount, 0);
 
         _pools[_poolId].totalStaked += _amount;
         _stakeInfoList[_poolId][_msgSender()] = stakeInfo;
@@ -211,7 +214,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
                 uint256 rewardAmount = _getRewardClaimable(pool.id, _user);
 
                 uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
-                bool canClaim = interestEndDate + pool.redemptionPeriod * 1 days <= block.timestamp;
+                bool canClaim = interestEndDate + pool.redemptionPeriod * 1 days <= blockTimestamp;
 
                 stakeClaims[count++] = RewardInfo(
                     pool.id,
@@ -230,9 +233,9 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         StakePool memory pool = _pools[_poolId];
 
         if (stakeInfo.amount == 0 || stakeInfo.withdrawTime != 0) return 0;
-        if (stakeInfo.valueDate > block.timestamp) return 0;
+        if (stakeInfo.valueDate > blockTimestamp) return 0;
 
-        uint256 lockedDays = (block.timestamp - stakeInfo.valueDate) / 1 days;
+        uint256 lockedDays = (blockTimestamp - stakeInfo.valueDate) / 1 days;
 
         if (lockedDays > pool.duration) lockedDays = pool.duration;
 
@@ -254,7 +257,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
 
         uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
 
-        require(block.timestamp < interestEndDate, Error.CANNOT_UN_STAKE_WHEN_OVER_DURATION);
+        require(blockTimestamp < interestEndDate, Error.CANNOT_UN_STAKE_WHEN_OVER_DURATION);
 
         uint256 rewardFullDuration = (stakeInfo.amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
 
@@ -271,7 +274,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         _topStakeInfoList[_poolId].sub(_msgSender(), stakeInfo.amount);
 
         delete _stakeInfoList[_poolId][_msgSender()];
-        _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, block.timestamp);
+        _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, blockTimestamp);
 
         emit UnStaked(_msgSender(), _poolId);
     }
@@ -288,7 +291,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
 
         require(
-            interestEndDate + pool.redemptionPeriod * 1 days <= block.timestamp,
+            interestEndDate + pool.redemptionPeriod * 1 days <= blockTimestamp,
             Error.CANNOT_WITHDRAW_BEFORE_REDEMPTION_PERIOD
         );
 
@@ -354,5 +357,9 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         );
 
         require(IERC20Upgradeable(_tokenAddress).transfer(_msgSender(), _amount), Error.TRANSFER_TOKEN_FAILED);
+    }
+
+    function setBlockTimestamp(uint256 _timestamp) external {
+        blockTimestamp = _timestamp;
     }
 }

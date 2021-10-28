@@ -21,7 +21,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
 
     StakePool[] private _pools;
 
-    uint256 public daysOfYear = 365;
+    uint256 public daysOfYear;
 
     // poolId => account => stake info
     mapping(uint256 => mapping(address => StakeInfo)) private _stakeInfoList;
@@ -50,6 +50,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
 
     constructor() {
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        daysOfYear = 365;
         blockTimestamp = block.timestamp;
     }
 
@@ -182,7 +183,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
 
         if (!pool.useWhitelist) return false;
-        if (stakeInfo.withdrawTime != 0 && stakeInfo.stakeTime + pool.duration * 1 days > stakeInfo.withdrawTime)
+        if (stakeInfo.withdrawTime != 0 && stakeInfo.valueDate + pool.duration * 1 days > stakeInfo.withdrawTime)
             return false;
         if (pool.minStakeWhitelist > stakeInfo.amount) return false;
 
@@ -261,13 +262,15 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
 
         require(IERC20(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount), Error.TRANSFER_TOKEN_FAILED);
 
+        pool.totalStaked -= stakeInfo.amount;
+
         _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
         _rewardAmounts[pool.rewardAddress] -= rewardFullDuration;
 
         _topStakeInfoList[_poolId].sub(_msgSender(), stakeInfo.amount);
 
-        _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, blockTimestamp);
         delete _stakeInfoList[_poolId][_msgSender()];
+        _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, block.timestamp);
 
         emit UnStaked(_msgSender(), _poolId);
     }
@@ -303,8 +306,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
         _rewardAmounts[pool.rewardAddress] -= reward;
 
+        _stakeInfoList[_poolId][_msgSender()].withdrawTime = block.timestamp;
         _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, blockTimestamp);
-        delete _stakeInfoList[_poolId][_msgSender()];
 
         emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, reward);
     }

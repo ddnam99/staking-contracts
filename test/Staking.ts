@@ -179,7 +179,7 @@ describe("Staking", function () {
       expect(stakeInfo.amount.toHexString()).equal(BigNumber.from(2000).mul(decimalMultiplier).toHexString());
     });
 
-    it("Should in WL after stake qualified", async () => {
+    it("Should in white list after stake qualified", async () => {
       const userAddress = await accounts[1].getAddress();
 
       const isWL = await ownerStaking.checkWhiteList(0, userAddress);
@@ -187,7 +187,7 @@ describe("Staking", function () {
       expect(isWL).equal(true);
     });
 
-    it("Should not in WL after stake not qualified", async () => {
+    it("Should not in white list after stake not qualified", async () => {
       const userAddress = await accounts[2].getAddress();
 
       const isWL = await ownerStaking.checkWhiteList(0, userAddress);
@@ -195,11 +195,11 @@ describe("Staking", function () {
       expect(isWL).equal(false);
     });
 
-    it("Should not in WL after un stake", async () => {
+    it("Should not in white list after un stake", async () => {
       const user = await hre.ethers.getContractAt("StakingMock", StakingContract.address, accounts[4]);
       const userAddress = await accounts[4].getAddress();
 
-      user.unStake(0);
+      await user.unStake(0);
       const isWL = await ownerStaking.checkWhiteList(0, userAddress);
 
       expect(isWL).equal(false);
