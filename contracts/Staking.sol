@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.2;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
-import "hardhat/console.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
 
 import "./StakingLib.sol";
 import "./AddressesLib.sol";
 import "./Error.sol";
 
-contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessControlUpgradeable {
+contract Staking is Context, ReentrancyGuard, AccessControl {
     using StakingLib for StakePool[];
     using StakingLib for StakeInfo[];
     using AddressesLib for address[];
@@ -46,7 +45,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
     event UnStaked(address user, uint256 poolId);
     event Withdrawn(address user, uint256 poolId, uint256 amount, uint256 reward);
 
-    function initialize(address _multiSigAccount) public initializer {
+    constructor(address _multiSigAccount) {
         renounceRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(DEFAULT_ADMIN_ROLE, _multiSigAccount);
         daysOfYear = 365;
@@ -77,7 +76,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         uint256 totalReward = (_maxPoolStake * _duration * _apr) / (daysOfYear * _denominatorAPR);
 
         require(
-            IERC20Upgradeable(_rewardAddress).transferFrom(_msgSender(), address(this), totalReward),
+            IERC20(_rewardAddress).transferFrom(_msgSender(), address(this), totalReward),
             Error.TRANSFER_REWARD_FAILED
         );
 
@@ -148,7 +147,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         require(pool.totalStaked + _amount <= pool.maxPoolStake, Error.OVER_MAX_POOL_STAKE);
 
         require(
-            IERC20Upgradeable(pool.stakeAddress).transferFrom(_msgSender(), address(this), _amount),
+            IERC20(pool.stakeAddress).transferFrom(_msgSender(), address(this), _amount),
             Error.TRANSFER_TOKEN_FAILED
         );
 
@@ -259,7 +258,7 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         uint256 rewardFullDuration = (stakeInfo.amount * pool.duration * pool.apr) / (daysOfYear * pool.denominatorAPR);
 
         require(
-            IERC20Upgradeable(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount),
+            IERC20(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount),
             Error.TRANSFER_TOKEN_FAILED
         );
 
@@ -296,13 +295,13 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
 
         if (pool.stakeAddress == pool.rewardAddress) {
             require(
-                IERC20Upgradeable(pool.rewardAddress).transfer(_msgSender(), stakeInfo.amount + reward),
+                IERC20(pool.rewardAddress).transfer(_msgSender(), stakeInfo.amount + reward),
                 Error.TRANSFER_REWARD_FAILED
             );
         } else {
-            require(IERC20Upgradeable(pool.rewardAddress).transfer(_msgSender(), reward), Error.TRANSFER_REWARD_FAILED);
+            require(IERC20(pool.rewardAddress).transfer(_msgSender(), reward), Error.TRANSFER_REWARD_FAILED);
             require(
-                IERC20Upgradeable(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount),
+                IERC20(pool.stakeAddress).transfer(_msgSender(), stakeInfo.amount),
                 Error.TRANSFER_TOKEN_FAILED
             );
         }
@@ -348,11 +347,11 @@ contract Staking is ContextUpgradeable, ReentrancyGuardUpgradeable, AccessContro
         require(_amount != 0, Error.AMOUNT_MUST_GREATER_ZERO);
 
         require(
-            IERC20Upgradeable(_tokenAddress).balanceOf(address(this)) >=
+            IERC20(_tokenAddress).balanceOf(address(this)) >=
                 _stakedAmounts[_tokenAddress] + _rewardAmounts[_tokenAddress] + _amount,
             Error.NOT_ENOUGH_TOKEN
         );
 
-        require(IERC20Upgradeable(_tokenAddress).transfer(_msgSender(), _amount), Error.TRANSFER_TOKEN_FAILED);
+        require(IERC20(_tokenAddress).transfer(_msgSender(), _amount), Error.TRANSFER_TOKEN_FAILED);
     }
 }
