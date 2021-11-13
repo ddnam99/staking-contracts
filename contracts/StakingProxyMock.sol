@@ -265,7 +265,7 @@ contract StakingProxyMock is ContextUpgradeable, ReentrancyGuardUpgradeable, Acc
             Error.TRANSFER_TOKEN_FAILED
         );
 
-        pool.totalStaked -= stakeInfo.amount;
+        _pools[_poolId].totalStaked -= stakeInfo.amount;
 
         _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
         _rewardAmounts[pool.rewardAddress] -= rewardFullDuration;
