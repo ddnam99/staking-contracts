@@ -42,6 +42,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     }
 
     event NewPool(uint256 poolId);
+    event ActivePool(uint256 poolId);
     event ClosePool(uint256 poolId);
     event Staked(address user, uint256 poolId, uint256 amount);
     event UnStaked(address user, uint256 poolId);
@@ -71,6 +72,7 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         require(_duration != 0, Error.DURATION_MUST_NOT_EQUAL_ZERO);
         require(_minTokenStake > 0, Error.MIN_TOKEN_STAKE_MUST_GREATER_ZERO);
         require(_maxTokenStake > 0, Error.MAX_TOKEN_STAKE_MUST_GREATER_ZERO);
+        require(_maxTokenStake >= _minTokenStake, Error.MAX_TOKEN_STAKE_MUST_GREATER_MIN_TOKEN_STAKE);
         require(_maxPoolStake > 0, Error.MAX_POOL_STAKE_MUST_GREATER_ZERO);
         require(_denominatorAPR > 0, Error.DENOMINATOR_APR_MUST_GREATER_ZERO);
         require(_apr > 0 && _apr <= _denominatorAPR, Error.REWARD_PERCENT_MUST_IN_RANGE_BETWEEN_ONE_TO_HUNDRED);
@@ -107,13 +109,25 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         emit NewPool(_pools.length - 1);
     }
 
+    function activePool(uint256 _poolId) external nonReentrant onlyAdmin {
+        require(!_pools[_poolId].isActive, Error.POOL_IS_ACTIVE);
+
+        _pools[_poolId].isActive = true;
+
+        emit ActivePool(_poolId);
+    }
+
     function closePool(uint256 _poolId) external nonReentrant onlyAdmin {
+        require(_poolId < _pools.length, Error.POOL_NOT_FOUND);
+
         _pools[_poolId].isActive = false;
 
         emit ClosePool(_poolId);
     }
 
     function getDetailPool(uint256 _poolId) external view returns (StakePool memory) {
+        require(_poolId < _pools.length, Error.POOL_NOT_FOUND);
+
         return _pools[_poolId];
     }
 
@@ -136,14 +150,16 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         @dev value date start 07:00 UTC next day
      */
     function stake(uint256 _poolId, uint256 _amount) external nonReentrant {
+        require(_poolId < _pools.length, Error.POOL_NOT_FOUND);
+
         StakePool memory pool = _pools[_poolId];
         StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
 
         require(stakeInfo.amount == 0 || stakeInfo.withdrawTime > 0, Error.DUPLICATE_STAKE);
 
+        require(pool.isActive, Error.POOL_CLOSED);
         require(_amount > 0, Error.AMOUNT_MUST_GREATER_ZERO);
         require(pool.startTime <= blockTimestamp, Error.IT_NOT_TIME_STAKE_YET);
-        require(pool.isActive && pool.totalStaked < pool.maxPoolStake, Error.POOL_CLOSED);
         require(pool.minTokenStake <= _amount, Error.AMOUNT_MUST_GREATER_OR_EQUAL_MIN_TOKEN_STAKE);
         require(pool.maxTokenStake >= _amount, Error.AMOUNT_MUST_LESS_OR_EQUAL_MAX_TOKEN_STAKE);
         require(pool.totalStaked + _amount <= pool.maxPoolStake, Error.OVER_MAX_POOL_STAKE);
@@ -178,6 +194,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         @dev if pool include white list and user stake amount qualified 
      */
     function checkWhiteList(uint256 _poolId, address _user) external view returns (bool) {
+        require(_poolId < _pools.length, Error.POOL_NOT_FOUND);
+
         StakePool memory pool = _pools[_poolId];
         StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_user];
 
@@ -241,6 +259,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     }
 
     function getRewardClaimable(uint256 _poolId, address _user) external view returns (uint256) {
+        require(_poolId < _pools.length, Error.POOL_NOT_FOUND);
+
         return _getRewardClaimable(_poolId, _user);
     }
 
@@ -248,6 +268,8 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         @dev user withdraw token staked without reward
      */
     function unStake(uint256 _poolId) external nonReentrant {
+        require(_poolId < _pools.length, Error.POOL_NOT_FOUND);
+
         StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
         StakePool memory pool = _pools[_poolId];
 
@@ -269,7 +291,10 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         _topStakeInfoList[_poolId].sub(_msgSender(), stakeInfo.amount);
 
         delete _stakeInfoList[_poolId][_msgSender()];
-        _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, block.timestamp);
+        require(
+            _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, blockTimestamp),
+            Error.UPDATE_WITHDRAW_TIME_LAST_STAKE_FAILED
+        );
 
         emit UnStaked(_msgSender(), _poolId);
     }
@@ -278,10 +303,12 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         @dev user withdraw token & reward
      */
     function withdraw(uint256 _poolId) external nonReentrant {
+        require(_poolId < _pools.length, Error.POOL_NOT_FOUND);
+
         StakeInfo memory stakeInfo = _stakeInfoList[_poolId][_msgSender()];
         StakePool memory pool = _pools[_poolId];
 
-        require(stakeInfo.amount > 0, Error.NOTHING_TO_WITHDRAW);
+        require(stakeInfo.amount > 0 && stakeInfo.withdrawTime == 0, Error.NOTHING_TO_WITHDRAW);
 
         uint256 interestEndDate = stakeInfo.valueDate + pool.duration * 1 days;
 
@@ -305,8 +332,11 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         _stakedAmounts[pool.stakeAddress] -= stakeInfo.amount;
         _rewardAmounts[pool.rewardAddress] -= reward;
 
-        _stakeInfoList[_poolId][_msgSender()].withdrawTime = block.timestamp;
-        _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, blockTimestamp);
+        _stakeInfoList[_poolId][_msgSender()].withdrawTime = blockTimestamp;
+        require(
+            _stakeHistories[_msgSender()].updateWithdrawTimeLastStake(_poolId, blockTimestamp),
+            Error.UPDATE_WITHDRAW_TIME_LAST_STAKE_FAILED
+        );
 
         emit Withdrawn(_msgSender(), _poolId, stakeInfo.amount, reward);
     }
