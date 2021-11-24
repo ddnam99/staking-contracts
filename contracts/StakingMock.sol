@@ -42,7 +42,6 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
     }
 
     event NewPool(uint256 poolId);
-    event ActivePool(uint256 poolId);
     event ClosePool(uint256 poolId);
     event Staked(address user, uint256 poolId, uint256 amount);
     event UnStaked(address user, uint256 poolId);
@@ -71,7 +70,6 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         require(_startTime >= blockTimestamp, Error.START_TIME_MUST_IN_FUTURE_DATE);
         require(_duration != 0, Error.DURATION_MUST_NOT_EQUAL_ZERO);
         require(_minTokenStake > 0, Error.MIN_TOKEN_STAKE_MUST_GREATER_ZERO);
-        require(_maxTokenStake > 0, Error.MAX_TOKEN_STAKE_MUST_GREATER_ZERO);
         require(_maxTokenStake >= _minTokenStake, Error.MAX_TOKEN_STAKE_MUST_GREATER_MIN_TOKEN_STAKE);
         require(_maxPoolStake > 0, Error.MAX_POOL_STAKE_MUST_GREATER_ZERO);
         require(_denominatorAPR > 0, Error.DENOMINATOR_APR_MUST_GREATER_ZERO);
@@ -107,14 +105,6 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
         _lockedAddresses.add(_stakeAddress);
 
         emit NewPool(_pools.length - 1);
-    }
-
-    function activePool(uint256 _poolId) external nonReentrant onlyAdmin {
-        require(!_pools[_poolId].isActive, Error.POOL_IS_ACTIVE);
-
-        _pools[_poolId].isActive = true;
-
-        emit ActivePool(_poolId);
     }
 
     function closePool(uint256 _poolId) external nonReentrant onlyAdmin {
@@ -371,6 +361,16 @@ contract StakingMock is Context, ReentrancyGuard, AccessControl {
      */
     function withdrawERC20(address _tokenAddress, uint256 _amount) external nonReentrant onlyAdmin {
         require(_amount != 0, Error.AMOUNT_MUST_GREATER_ZERO);
+
+        bool canWithdraw = true;
+        StakePool[] memory activePools = _pools.getActivePools();
+        for(uint256 i = 0; i < activePools.length; i++){
+            if(activePools[i].rewardAddress == _tokenAddress){
+                canWithdraw = false;
+                break;
+            }
+        }
+        require(canWithdraw, Error.TOKEN_USED_IN_ACTIVE_POOL);
 
         require(
             IERC20(_tokenAddress).balanceOf(address(this)) >=

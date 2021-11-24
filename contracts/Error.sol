@@ -9,7 +9,6 @@ library Error {
     string public constant START_TIME_MUST_IN_FUTURE_DATE = "Error: Start time must be in future date";
     string public constant DURATION_MUST_NOT_EQUAL_ZERO = "Error: Duration must be not equal 0";
     string public constant MIN_TOKEN_STAKE_MUST_GREATER_ZERO = "Error: Min token stake must be greater than 0";
-    string public constant MAX_TOKEN_STAKE_MUST_GREATER_ZERO = "Error: Max token stake must be greater than 0";
     string public constant MAX_TOKEN_STAKE_MUST_GREATER_MIN_TOKEN_STAKE =
         "Error: Max token stake must be greater than min token stake";
     string public constant MAX_POOL_STAKE_MUST_GREATER_ZERO = "Error: Max pool stake must be greater than 0";
@@ -37,4 +36,6 @@ library Error {
     string public constant CANNOT_WITHDRAW_BEFORE_REDEMPTION_PERIOD = "Error: Cannot withdraw before redemption period";
 
     string public constant UPDATE_WITHDRAW_TIME_LAST_STAKE_FAILED = "Error: Update withdraw time last stake failed";
+
+    string public constant TOKEN_USED_IN_ACTIVE_POOL = "Error: Token being used in an active pool";
 }
